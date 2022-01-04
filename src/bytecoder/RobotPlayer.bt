@@ -1,0 +1,97 @@
+extern {
+    package bytecoder;
+    import battlecode.common.*;
+
+    import java.util.Random;
+}
+
+use Common::*;
+
+extern class Random {
+    constructor(seed: i32);
+    fn nextInt(max: i32): i32;
+    fn nextBool(): bool = "nextBoolean";
+}
+
+let turnCount = 0;
+let rng = Random(12);
+let directions = [
+    Direction::NORTH,
+    Direction::NORTHEAST,
+    Direction::EAST,
+    Direction::SOUTHEAST,
+    Direction::SOUTH,
+    Direction::SOUTHWEST,
+    Direction::WEST,
+    Direction::NORTHWEST,
+];
+
+let rc: RobotController;
+
+fn pub run(rc2: RobotController) {
+    rc = rc2;
+    loop {
+        extern "try {";
+
+        match rc.getType() {
+            ARCHON => runArchon(),
+            MINER => runMiner(),
+            SOLDIER => runSoldier(),
+            else => {},
+        }
+
+        extern "} catch (Exception e) { e.printStackTrace(); }";
+        clockYield();
+    }
+}
+
+fn runArchon() throws GameActionException {
+    let dir = directions[rng.nextInt(directions.len())];
+    if rng.nextBool() {
+        if rc.canBuildRobot(RobotType::MINER, dir) {
+            rc.buildRobot(RobotType::MINER, dir);
+        }
+    } else {
+        if rc.canBuildRobot(RobotType::SOLDIER, dir) {
+            rc.buildRobot(RobotType::SOLDIER, dir);
+        }
+    }
+}
+
+fn runMiner() throws GameActionException {
+    // Mine
+    let at = rc.getLocation();
+    let mined = false;
+    for dx in -1..1 {
+        for dy in -1..1 {
+            let loc = at.translate(dx, dy);
+            while rc.canMineGold(loc) {
+                mined = true;
+                rc.mineGold(loc);
+            }
+            while rc.canMineLead(loc) {
+                mined = true;
+                rc.mineLead(loc);
+            }
+        }
+    }
+
+    // Move, if we're done mining
+    if !mined {
+        let dir = directions[rng.nextInt(directions.len())];
+        if rc.canMove(dir) {
+            rc.move(dir);
+        }
+    }
+}
+
+fn runSoldier() throws GameActionException {
+    // Attack
+    // TODO - Java arrays
+
+    // Move
+    let dir = directions[rng.nextInt(directions.len())];
+    if rc.canMove(dir) {
+        rc.move(dir);
+    }
+}
