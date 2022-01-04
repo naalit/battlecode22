@@ -25,11 +25,13 @@ let directions = [
     Direction::WEST,
     Direction::NORTHWEST,
 ];
+let team: Team;
 
 let rc: RobotController;
 
 fn pub run(rc2: RobotController) {
     rc = rc2;
+    team = rc.getTeam();
     loop {
         extern "try {";
 
@@ -46,14 +48,24 @@ fn pub run(rc2: RobotController) {
 }
 
 fn runArchon() throws GameActionException {
-    let dir = directions[rng.nextInt(directions.len())];
-    if rng.nextBool() {
-        if rc.canBuildRobot(RobotType::MINER, dir) {
-            rc.buildRobot(RobotType::MINER, dir);
+    if rc.getRoundNum() == 1 {
+        rc.buildRobot(RobotType::MINER, Direction::SOUTH);
+    } else if rc.getRoundNum() < 200 && rc.getTeamLeadAmount(team) > RobotType::MINER.buildCostLead * rc.getArchonCount() {
+        for dir in directions {
+            if rc.canBuildRobot(RobotType::MINER, dir) {
+                rc.buildRobot(RobotType::MINER, dir);
+            }
         }
     } else {
-        if rc.canBuildRobot(RobotType::SOLDIER, dir) {
-            rc.buildRobot(RobotType::SOLDIER, dir);
+        let dir = directions[rng.nextInt(directions.len())];
+        if rng.nextBool() {
+            if rc.canBuildRobot(RobotType::MINER, dir) {
+                rc.buildRobot(RobotType::MINER, dir);
+            }
+        } else {
+            if rc.canBuildRobot(RobotType::SOLDIER, dir) {
+                rc.buildRobot(RobotType::SOLDIER, dir);
+            }
         }
     }
 }
@@ -61,23 +73,25 @@ fn runArchon() throws GameActionException {
 fn runMiner() throws GameActionException {
     // Mine
     let at = rc.getLocation();
-    let mined = false;
+    let some_left = false;
     for dx in -1..1 {
         for dy in -1..1 {
             let loc = at.translate(dx, dy);
             while rc.canMineGold(loc) {
-                mined = true;
                 rc.mineGold(loc);
             }
-            while rc.canMineLead(loc) {
-                mined = true;
+            // Leave 1 so it regenerates
+            while rc.canMineLead(loc) && rc.senseLead(loc) > 1 {
                 rc.mineLead(loc);
+            }
+            if !some_left && (rc.senseLead(loc) > 1 || rc.senseGold(loc) > 0) {
+                some_left = true;
             }
         }
     }
 
     // Move, if we're done mining
-    if !mined {
+    if !some_left {
         let dir = directions[rng.nextInt(directions.len())];
         if rc.canMove(dir) {
             rc.move(dir);
@@ -87,7 +101,22 @@ fn runMiner() throws GameActionException {
 
 fn runSoldier() throws GameActionException {
     // Attack
-    // TODO - Java arrays
+    let radius = rc.getType().actionRadiusSquared;
+    let opponent = rc.getTeam().opponent();
+    let enemies = rc.senseNearbyRobotsT(radius, opponent);
+    let lowest_hp = 10000;
+    let lowest_unit = rc.getLocation();
+    for i in enemies {
+        if i.health < lowest_hp {
+            lowest_hp = i.health;
+            lowest_unit = i.location;
+        }
+    }
+    if lowest_hp < 10000 {
+        if rc.canAttack(lowest_unit) {
+            rc.attack(lowest_unit);
+        }
+    }
 
     // Move
     let dir = directions[rng.nextInt(directions.len())];

@@ -86,6 +86,7 @@ extern class MapLocation {
     fn isWithin(loc: MapLocation, distanceSquared: i32): bool = "isWithinDistanceSquared";
     fn translate(dx: i32, dy: i32): MapLocation;
     fn isAdjacentTo(loc: MapLocation): bool;    
+    fn toString(): str;
 }
 
 extern class RobotInfo {
@@ -96,6 +97,10 @@ extern class RobotInfo {
     let mode: RobotMode;
     let team: Team;
     let type: RobotType;
+}
+extern class AnomalyScheduleEntry {
+    let anomalyType: AnomalyType;
+    let roundNumber: i32;
 }
 
 extern class RobotController {
@@ -145,9 +150,8 @@ extern class RobotController {
     // Returns the number of action cooldown turns remaining before this unit can act again.
     fn getActionCooldownTurns(): i32;
     // Returns a list of all locations within the given radiusSquared of a location.
-    // TODO: interoperate with Java arrays
     fn getAllLocationsWithinRadiusSquared(center: MapLocation, radiusSquared: i32): [MapLocation];
-    // fn getAnomalySchedule(): [AnomalyScheduleEntry]; 
+    fn getAnomalySchedule(): [AnomalyScheduleEntry]; 
     // Returns the number of Archons on your team.
     fn getArchonCount(): i32;
     // Returns this robot's current health.
