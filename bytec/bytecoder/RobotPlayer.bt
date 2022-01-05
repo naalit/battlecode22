@@ -92,11 +92,12 @@ fn runMiner() throws GameActionException {
 
     // Move, if we're done mining
     if !some_left {
+        // If we can see any metals, go mine them
         let best_lead = 1;
         let best_loc: MapLocation = null;
         for l in rc.getAllLocationsWithinRadiusSquared(at, rc.getType().visionRadiusSquared) {
             if rc.canSenseLocation(l) {
-                let lead = rc.senseLead(l);
+                let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
                 if lead > best_lead {
                     best_lead = lead;
                     best_loc = l;
@@ -112,24 +113,43 @@ fn runMiner() throws GameActionException {
 }
 
 fn runSoldier() throws GameActionException {
-    // Attack
+    let loc = rc.getLocation();
+
     let radius = rc.getType().actionRadiusSquared;
     let opponent = rc.getTeam().opponent();
-    let enemies = rc.senseNearbyRobotsT(radius, opponent);
-    let lowest_hp = 10000;
-    let lowest_unit = rc.getLocation();
+    let enemies = rc.senseNearbyRobotsT(rc.getType().visionRadiusSquared, opponent);
+
+    // We attack the enemy with the lowest hp in attack range, and if we can see
+    // enemies outside of attack range we move towards the one of those with the lowest hp
+    // The idea is to kill more units more quickly which is better than just doing damage
+    let attack_hp = 10000;
+    let attack_target: MapLocation = null;
+    let move_hp = 10000;
+    let move_target: MapLocation = null;
     for i in enemies {
-        if i.health < lowest_hp {
-            lowest_hp = i.health;
-            lowest_unit = i.location;
+        if i.location.isWithinDistanceSquared(loc, radius) {
+            if i.health < attack_hp {
+                attack_hp = i.health;
+                attack_target = i.location;
+            }
+        } else {
+            if i.health < move_hp {
+                move_hp = i.health;
+                move_target = i.location;
+            }
         }
     }
-    if lowest_hp < 10000 {
-        if rc.canAttack(lowest_unit) {
-            rc.attack(lowest_unit);
+
+    // Attack
+    if attack_target != null {
+        if rc.canAttack(attack_target) {
+            rc.attack(attack_target);
         }
     }
 
     // Move
+    if move_target != null {
+        Paths::target = move_target;
+    }
     Paths::targetMove(true);
 }
