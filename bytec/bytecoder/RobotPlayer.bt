@@ -84,7 +84,7 @@ fn runMiner() throws GameActionException {
             while rc.canMineLead(loc) && rc.senseLead(loc) > 1 {
                 rc.mineLead(loc);
             }
-            if !some_left && (rc.senseLead(loc) > 1 || rc.senseGold(loc) > 0) {
+            if !some_left && rc.canSenseLocation(loc) && (rc.senseLead(loc) > 1 || rc.senseGold(loc) > 0) {
                 some_left = true;
             }
         }
@@ -92,10 +92,22 @@ fn runMiner() throws GameActionException {
 
     // Move, if we're done mining
     if !some_left {
-        let dir = directions[rng.nextInt(directions.len())];
-        if rc.canMove(dir) {
-            rc.move(dir);
+        let best_lead = 1;
+        let best_loc: MapLocation = null;
+        for l in rc.getAllLocationsWithinRadiusSquared(at, rc.getType().visionRadiusSquared) {
+            if rc.canSenseLocation(l) {
+                let lead = rc.senseLead(l);
+                if lead > best_lead {
+                    best_lead = lead;
+                    best_loc = l;
+                }
+            }
         }
+
+        if best_loc != null {
+            Paths::target = best_loc;
+        }
+        Paths::targetMove(true);
     }
 }
 
@@ -119,8 +131,5 @@ fn runSoldier() throws GameActionException {
     }
 
     // Move
-    let dir = directions[rng.nextInt(directions.len())];
-    if rc.canMove(dir) {
-        rc.move(dir);
-    }
+    Paths::targetMove(true);
 }

@@ -73,6 +73,10 @@ extern enum Direction {
 
     let dx: i32;
     let dy: i32;
+
+    fn rotateLeft(): Direction;
+    fn rotateRight(): Direction;
+    fn opposite(): Direction;
 }
 extern class MapLocation {
     constructor(x: i32, y: i32);
@@ -83,7 +87,7 @@ extern class MapLocation {
     fn sub(dir: Direction): MapLocation = "subtract";
     fn dirTo(loc: MapLocation): Direction = "directionTo";
     fn distanceSquaredTo(loc: MapLocation): i32;
-    fn isWithin(loc: MapLocation, distanceSquared: i32): bool = "isWithinDistanceSquared";
+    fn isWithinDistanceSquared(loc: MapLocation, distanceSquared: i32): bool;
     fn translate(dx: i32, dy: i32): MapLocation;
     fn isAdjacentTo(loc: MapLocation): bool;    
     fn toString(): str;
