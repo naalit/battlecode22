@@ -4,8 +4,8 @@ extern {
 }
 
 extern fn clockYield() = "Clock.yield";
-extern fn bytecodeNum() = "Clock.getBytecodeNum";
-extern fn bytecodeLeft() = "Clock.getBytecodesLeft";
+extern fn bytecodeNum(): i32 = "Clock.getBytecodeNum";
+extern fn bytecodeLeft(): i32 = "Clock.getBytecodesLeft";
 
 extern enum AnomalyType {
     ABYSS,

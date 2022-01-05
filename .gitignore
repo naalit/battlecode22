@@ -34,4 +34,4 @@ battlecode-scaffold.iws
 .settings/
 
 # Bytec generated code
-/src/bytecoder
+/src/byte*
