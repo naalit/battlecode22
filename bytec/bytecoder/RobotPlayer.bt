@@ -60,7 +60,17 @@ fn runArchon() throws GameActionException {
 
         rc.buildRobot(RobotType::MINER, Direction::SOUTH);
     } else {
-        let ty = if rng.nextInt(3) == 0 && Mem::nearbyRobotsThem.len() < Mem::nearbyRobotsMe.len()  {
+        let numMiners = 0;
+        for i in Mem::nearbyRobotsMe {
+            if i.type == RobotType::MINER {
+                numMiners += 1;
+            }
+        }
+        let lead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared);
+        let nLead = lead.len();
+        if nLead < 2 { nLead = 2 }
+
+        let ty = if rng.nextInt(2) == 0 && numMiners < nLead && Mem::nearbyRobotsThem.len() < Mem::nearbyRobotsMe.len()  {
             RobotType::MINER
         } else {
             RobotType::SOLDIER
