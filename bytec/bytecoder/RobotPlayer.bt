@@ -53,6 +53,9 @@ fn pub run(rc2: RobotController) {
 // TODO update when a friendly archon dies
 let archonOrder = 0;
 
+let toBuild = [RobotType::MINER, RobotType::SOLDIER];
+let toBuildIdx = 0;
+
 fn runArchon() throws GameActionException {
     if rc.getRoundNum() == 1 {
         archonOrder = rc.readSharedArray(15);
@@ -60,28 +63,41 @@ fn runArchon() throws GameActionException {
 
         rc.buildRobot(RobotType::MINER, Direction::SOUTH);
     } else {
-        let numMiners = 0;
-        for i in Mem::nearbyRobotsMe {
-            if i.type == RobotType::MINER {
-                numMiners += 1;
-            }
-        }
-        let lead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared);
-        let nLead = lead.len();
-        if nLead < 2 { nLead = 2 }
+        // let numMiners = 0;
+        // for i in Mem::nearbyRobotsMe {
+        //     if i.type == RobotType::MINER {
+        //         numMiners += 1;
+        //     }
+        // }
+        // let lead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared);
+        // let nLead = lead.len();
+        // if nLead < 2 { nLead = 2 }
 
-        let ty = if rng.nextInt(2) == 0 && numMiners < nLead && Mem::nearbyRobotsThem.len() < Mem::nearbyRobotsMe.len()  {
-            RobotType::MINER
-        } else {
-            RobotType::SOLDIER
-        };
+        let ty = toBuild[toBuildIdx];
+        // let ty = if rng.nextInt(2) == 0 && numMiners < nLead && Mem::nearbyRobotsThem.len() < Mem::nearbyRobotsMe.len()  {
+        //     RobotType::MINER
+        // } else {
+        //     RobotType::SOLDIER
+        // };
         // Don't let one Archon dominate
         // They take turns spawning, or they can override the order if there's enough for each other archon to spawn a soldier to defend itself
-        if rc.getRoundNum() % rc.getArchonCount() == archonOrder
+        let turn = rc.getRoundNum() % rc.getArchonCount();
+        let roundsUntilOurs = if turn <= archonOrder { archonOrder - turn } else { archonOrder - turn + rc.getArchonCount() };
+        if turn == archonOrder
             || rc.getTeamLeadAmount(team) > ty.buildCostLead + RobotType::SOLDIER.buildCostLead * (rc.getArchonCount() - archonOrder - 1) {
             for dir in directions {
                 if rc.canBuildRobot(ty, dir) {
                     rc.buildRobot(ty, dir);
+                    toBuildIdx = (toBuildIdx + 1) % toBuild.len();
+                    break;
+                }
+            }
+        } else if roundsUntilOurs >= rc.getActionCooldownTurns() + 2 {
+            // Try to repair a robot in range
+            for i in Mem::nearbyRobotsMe {
+                if i.health <= i.type.health - RobotType::ARCHON.getHealing(rc.getLevel()) && rc.canRepair(i.location) {
+                    rc.repair(i.location);
+                    break;
                 }
             }
         }
