@@ -39,7 +39,7 @@ fn pub run(rc2: RobotController) {
 
         match rc.getType() {
             ARCHON => runArchon(),
-            MINER => runMiner(),
+            MINER => Miner::runMiner(),
             SOLDIER => Soldier::runSoldier(),
             else => {},
         }
@@ -104,49 +104,3 @@ fn runArchon() throws GameActionException {
     }
 }
 
-fn runMiner() throws GameActionException {
-    // Mine
-    let at = rc.getLocation();
-    let some_left = false;
-    for dx in -1..1 {
-        for dy in -1..1 {
-            let loc = at.translate(dx, dy);
-            while rc.canMineGold(loc) {
-                rc.mineGold(loc);
-            }
-            // Leave 1 so it regenerates
-            while rc.canMineLead(loc) && rc.senseLead(loc) > 1 {
-                rc.mineLead(loc);
-            }
-            if !some_left && rc.canSenseLocation(loc) && (rc.senseLead(loc) > 1 || rc.senseGold(loc) > 0) {
-                some_left = true;
-            }
-        }
-    }
-
-    // Move, if we're done mining
-    if !some_left {
-        // If we can see any metals, go mine them
-        let best_lead = 1;
-        let best_loc: MapLocation = null;
-        for l in rc.senseNearbyLocationsWithGold(rc.getType().visionRadiusSquared) {
-            let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
-            if lead > best_lead {
-                best_lead = lead;
-                best_loc = l;
-            }
-        }
-        for l in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared) {
-            let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
-            if lead > best_lead {
-                best_lead = lead;
-                best_loc = l;
-            }
-        }
-
-        if best_loc != null {
-            Paths::target = best_loc;
-        }
-        Paths::targetMove(true);
-    }
-}

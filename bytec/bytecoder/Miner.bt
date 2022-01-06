@@ -1,0 +1,88 @@
+extern {
+    package bytecoder;
+    import battlecode.common.*;
+}
+
+use Common::*;
+use RobotPlayer::rc;
+
+fn runMiner() throws GameActionException {
+    // MINER MICRO:
+    // 1. Mine as much as we can right now, that's the only thing the action cooldown is for
+    // 2. Move:
+    //   a. If there's more metal to mine without moving, stay here
+    //   b. If there are enemy soldiers nearby, move away from them
+    //   c. If we can see metal that we can mine somewhere else, go there
+    //   d. Explore randomly
+    // 3. Try to mine again if we moved
+
+    if tryMine() {
+        return;
+    }
+
+    // If there are enemy soldiers nearby, run away
+    let loc = rc.getLocation();
+    let closest_soldier: MapLocation = null;
+    let closest_d = 1000;
+    for i in Mem::nearbyRobotsThem {
+        if i.type == RobotType::SOLDIER {
+            let d = i.location.distanceSquaredTo(loc);
+            if d < closest_d {
+                closest_soldier = i.location;
+                closest_d = d;
+            }
+        }
+    }
+    if closest_soldier != null {
+        rc.setIndicatorLine(loc, closest_soldier, 255, 0, 0);
+        let dirAway = closest_soldier.dirTo(loc);
+        Paths::target = loc.add(dirAway).add(dirAway);
+    } else {
+        // If we can see any metals, go mine them
+        let best_lead = 1;
+        let best_loc: MapLocation = null;
+        for l in rc.senseNearbyLocationsWithGold(rc.getType().visionRadiusSquared) {
+            let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
+            if lead > best_lead {
+                best_lead = lead;
+                best_loc = l;
+            }
+        }
+        for l in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared) {
+            let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
+            if lead > best_lead {
+                best_lead = lead;
+                best_loc = l;
+            }
+        }
+
+        if best_loc != null {
+            Paths::target = best_loc;
+        }
+    }
+    Paths::targetMove(true);
+
+    tryMine();
+}
+
+// Returns whether we can continue mining this spot next turn
+fn tryMine(): bool throws GameActionException {
+    let at = rc.getLocation();
+    let some_left = false;
+    for dx in -1..1 {
+        for dy in -1..1 {
+            let loc = at.translate(dx, dy);
+            while rc.canMineGold(loc) {
+                rc.mineGold(loc);
+            }
+            // Leave 1 so it regenerates
+            while rc.canMineLead(loc) && rc.senseLead(loc) > 1 {
+                rc.mineLead(loc);
+            }
+            if !some_left && rc.canSenseLocation(loc) && (rc.senseLead(loc) > 1 || rc.senseGold(loc) > 0) {
+                some_left = true;
+            }
+        }
+    }
+    some_left
+}
