@@ -7,6 +7,8 @@ extern fn clockYield() = "Clock.yield";
 extern fn bytecodeNum(): i32 = "Clock.getBytecodeNum";
 extern fn bytecodeLeft(): i32 = "Clock.getBytecodesLeft";
 
+extern fn abs(i: i32): i32 = "Math.abs";
+
 extern enum AnomalyType {
     ABYSS,
     CHARGE,
@@ -218,6 +220,10 @@ extern class RobotController {
     fn senseGold(loc: MapLocation): i32;
     // Given a location, returns the lead count of that location.
     fn senseLead(loc: MapLocation): i32;
+    // Return all locations that contain a nonzero amount of gold, within a specified radius of your robot location.
+    fn senseNearbyLocationsWithGold(radiusSquared: i32): [MapLocation];
+    // Return all locations that contain a nonzero amount of lead, within a specified radius of your robot location.
+    fn senseNearbyLocationsWithLead(radiusSquared: i32): [MapLocation];
     // Returns all robots within vision radius.
     fn senseNearbyRobots(): [RobotInfo];
     // Returns all robots that can be sensed within a certain distance of this robot.

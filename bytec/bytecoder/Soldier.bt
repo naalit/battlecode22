@@ -1,0 +1,128 @@
+extern {
+    package bytecoder;
+    import battlecode.common.*;
+}
+
+use Common::*;
+use RobotPlayer::rc;
+
+// We generally try defend this archon
+// There is usually only one in range so we only bother with one
+let closestArchon: RobotInfo;
+
+fn attackTarget(): (RobotInfo, RobotInfo) {
+    let loc = rc.getLocation();
+    let radius = rc.getType().actionRadiusSquared;
+
+    let near: RobotInfo = null;
+    let far: RobotInfo = null;
+    for bot in Mem::nearbyRobotsThem {
+        let isNear = bot.location.isWithinDistanceSquared(loc, radius);
+        let ref = if isNear { near } else { far };
+
+        // Targeting priority:
+        fn priority(ty: RobotType): i32 = match ty {
+            // Sages are valuable and dangerous, kill on sight
+            SAGE => 7,
+            // The most immediate threat, if we don't kill them they'll kill us
+            SOLDIER => 6,
+            // We'll need to kill these to take out a watchtower
+            // probably should have special-case code for actually seeing a watchtower though
+            BUILDER => 5,
+            // Another threat
+            WATCHTOWER => 4,
+            // We probably won't take out an Archon anytime soon with Soldiers, but doing damage on it is good
+            // Really these last three are TBD though
+            ARCHON => 3,
+            MINER => 2,
+            LABORATORY => 1,
+        };
+
+        let better =
+                ref == null
+            ||  priority(bot.type) > priority(ref.type)
+            // Pick the lowest hp to kill more units more quickly, which is better than just doing damage
+            ||  bot.health < ref.health
+            // Target the one closest to the Archon if there is one
+            ||  (closestArchon != null && bot.location.isWithinDistanceSquared(closestArchon.location, closestArchon.location.distanceSquaredTo(ref.location)))
+            // Otherwise just pick the closest one
+            ||  bot.location.isWithinDistanceSquared(loc, loc.distanceSquaredTo(ref.location));
+        if better {
+            if isNear {
+                near = bot;
+            } else {
+                far = bot;
+            }
+        }
+    }
+    (near, far)
+}
+
+fn runSoldier() throws GameActionException {
+    let loc = rc.getLocation();
+
+    closestArchon = null;
+    let numSoldiers = 0;
+    for i in Mem::nearbyRobotsMe {
+        if i.type == RobotType::ARCHON {
+            if closestArchon == null || i.location.isWithinDistanceSquared(loc, closestArchon.location.distanceSquaredTo(loc)) {
+                closestArchon = i;
+            }
+        } else if i.type == RobotType::SOLDIER {
+            numSoldiers += 1;
+        }
+    }
+
+    let targets = attackTarget();
+    // TODO destructuring
+    let attack_target = targets.0;
+    let move_target = targets.1;
+
+    // Attack
+    if attack_target != null {
+        if rc.canAttack(attack_target.location) {
+            rc.attack(attack_target.location);
+        }
+    }
+
+    // Move
+    // Defend our Archon if we're not in very early game and there aren't too many soldiers around
+    if closestArchon != null && numSoldiers < (1 + 3 * Mem::nearbyRobotsThem.len()) && rc.getRoundNum() > 150 {
+        // Try to stay about 13 units^2 of the archon so we're not in the way
+        let r2 = 13;
+        let closest: Direction = null;
+        let closest_d = 10000;
+        for dir in RobotPlayer::directions {
+            let l = loc.add(dir).add(dir);
+            if rc.canMove(dir) && rc.onTheMap(l) {
+                let d = abs(l.distanceSquaredTo(closestArchon.location) - r2);
+                if (d < closest_d) {
+                    closest = dir;
+                    closest_d = d;
+                }
+            }
+        }
+        if closest != null {
+            Paths::target = loc.add(closest);
+        }
+    // Go towards an enemy, but only if we don't need to defend the Archon
+    // TODO is it better to prioritize this or Archon defence?
+    } else if move_target != null {
+        Paths::target = move_target.location;
+    // Go attack the closest enemy Archon
+    } else if Mem::archons.len() > 0 {
+        let closest: MapLocation = null;
+        let closest_d = 10000;
+        for i in Mem::archons {
+            let d = i.distanceSquaredTo(loc);
+            if d < closest_d {
+                closest_d = d;
+                closest = i;
+            }
+        }
+        if closest != null {
+            Paths::target = closest;
+        }
+    }
+    Paths::targetMove(true);
+}

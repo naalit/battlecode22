@@ -40,7 +40,7 @@ fn pub run(rc2: RobotController) {
         match rc.getType() {
             ARCHON => runArchon(),
             MINER => runMiner(),
-            SOLDIER => runSoldier(),
+            SOLDIER => Soldier::runSoldier(),
             else => {},
         }
 
@@ -49,24 +49,30 @@ fn pub run(rc2: RobotController) {
     }
 }
 
+// What number archon this is, i.e. how many archons go before it each turn
+// TODO update when a friendly archon dies
+let archonOrder = 0;
+
 fn runArchon() throws GameActionException {
     if rc.getRoundNum() == 1 {
+        archonOrder = rc.readSharedArray(15);
+        rc.writeSharedArray(15, archonOrder + 1);
+
         rc.buildRobot(RobotType::MINER, Direction::SOUTH);
-    } else if rc.getRoundNum() < 200 && rc.getTeamLeadAmount(team) > RobotType::MINER.buildCostLead * rc.getArchonCount() {
-        for dir in directions {
-            if rc.canBuildRobot(RobotType::MINER, dir) {
-                rc.buildRobot(RobotType::MINER, dir);
-            }
-        }
     } else {
-        let dir = directions[rng.nextInt(directions.len())];
-        if rng.nextBool() {
-            if rc.canBuildRobot(RobotType::MINER, dir) {
-                rc.buildRobot(RobotType::MINER, dir);
-            }
+        let ty = if rng.nextInt(3) == 0 && Mem::nearbyRobotsThem.len() < Mem::nearbyRobotsMe.len()  {
+            RobotType::MINER
         } else {
-            if rc.canBuildRobot(RobotType::SOLDIER, dir) {
-                rc.buildRobot(RobotType::SOLDIER, dir);
+            RobotType::SOLDIER
+        };
+        // Don't let one Archon dominate
+        // They take turns spawning, or they can override the order if there's enough for each other archon to spawn a soldier to defend itself
+        if rc.getRoundNum() % rc.getArchonCount() == archonOrder
+            || rc.getTeamLeadAmount(team) > ty.buildCostLead + RobotType::SOLDIER.buildCostLead * (rc.getArchonCount() - archonOrder - 1) {
+            for dir in directions {
+                if rc.canBuildRobot(ty, dir) {
+                    rc.buildRobot(ty, dir);
+                }
             }
         }
     }
@@ -97,13 +103,18 @@ fn runMiner() throws GameActionException {
         // If we can see any metals, go mine them
         let best_lead = 1;
         let best_loc: MapLocation = null;
-        for l in rc.getAllLocationsWithinRadiusSquared(at, rc.getType().visionRadiusSquared) {
-            if rc.canSenseLocation(l) {
-                let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
-                if lead > best_lead {
-                    best_lead = lead;
-                    best_loc = l;
-                }
+        for l in rc.senseNearbyLocationsWithGold(rc.getType().visionRadiusSquared) {
+            let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
+            if lead > best_lead {
+                best_lead = lead;
+                best_loc = l;
+            }
+        }
+        for l in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared) {
+            let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
+            if lead > best_lead {
+                best_lead = lead;
+                best_loc = l;
             }
         }
 
@@ -112,58 +123,4 @@ fn runMiner() throws GameActionException {
         }
         Paths::targetMove(true);
     }
-}
-
-fn runSoldier() throws GameActionException {
-    let loc = rc.getLocation();
-
-    let radius = rc.getType().actionRadiusSquared;
-    let opponent = rc.getTeam().opponent();
-
-    // We attack the enemy with the lowest hp in attack range, and if we can see
-    // enemies outside of attack range we move towards the one of those with the lowest hp
-    // The idea is to kill more units more quickly which is better than just doing damage
-    let attack_hp = 10000;
-    let attack_target: MapLocation = null;
-    let move_hp = 10000;
-    let move_target: MapLocation = null;
-    for i in Mem::nearbyRobotsThem {
-        if i.location.isWithinDistanceSquared(loc, radius) {
-            if i.health < attack_hp {
-                attack_hp = i.health;
-                attack_target = i.location;
-            }
-        } else {
-            if i.health < move_hp {
-                move_hp = i.health;
-                move_target = i.location;
-            }
-        }
-    }
-
-    // Attack
-    if attack_target != null {
-        if rc.canAttack(attack_target) {
-            rc.attack(attack_target);
-        }
-    }
-
-    // Move
-    if move_target != null {
-        Paths::target = move_target;
-    } else if Mem::archons.len() > 0 {
-        let closest: MapLocation = null;
-        let closest_d = 10000;
-        for i in Mem::archons {
-            let d = i.distanceSquaredTo(loc);
-            if d < closest_d {
-                closest_d = d;
-                closest = i;
-            }
-        }
-        if closest != null {
-            Paths::target = closest;
-        }
-    }
-    Paths::targetMove(true);
 }
