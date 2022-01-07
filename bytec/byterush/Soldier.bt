@@ -1,5 +1,5 @@
 extern {
-    package bytecoder;
+    package byterush;
     import battlecode.common.*;
 }
 
@@ -10,7 +10,6 @@ use RobotPlayer::rc;
 // There is usually only one in range so we only bother with one
 let closestArchon: RobotInfo;
 
-let protectTurns = 20;
 fn attackTarget(): (RobotInfo, RobotInfo) {
     let loc = rc.getLocation();
     let radius = rc.getType().actionRadiusSquared;
@@ -20,10 +19,6 @@ fn attackTarget(): (RobotInfo, RobotInfo) {
     for bot in Mem::nearbyRobotsThem {
         let isNear = bot.location.isWithinDistanceSquared(loc, radius);
         let ref = if isNear { near } else { far };
-        // Includes soldiers, sages, and watchtowers
-        if bot.type.damage > 0 {
-            protectTurns = 20;
-        }
 
         // Targeting priority:
         fn priority(ty: RobotType): i32 = match ty {
@@ -66,17 +61,17 @@ fn attackTarget(): (RobotInfo, RobotInfo) {
 fn runSoldier() throws GameActionException {
     let loc = rc.getLocation();
 
-    closestArchon = null;
-    let numSoldiers = 0;
-    for i in Mem::nearbyRobotsMe {
-        if i.type == RobotType::ARCHON {
-            if closestArchon == null || i.location.isWithinDistanceSquared(loc, closestArchon.location.distanceSquaredTo(loc)) {
-                closestArchon = i;
-            }
-        } else if i.type == RobotType::SOLDIER {
-            numSoldiers += 1;
-        }
-    }
+    // closestArchon = null;
+    // let numSoldiers = 0;
+    // for i in Mem::nearbyRobotsMe {
+    //     if i.type == RobotType::ARCHON {
+    //         if closestArchon == null || i.location.isWithinDistanceSquared(loc, closestArchon.location.distanceSquaredTo(loc)) {
+    //             closestArchon = i;
+    //         }
+    //     } else if i.type == RobotType::SOLDIER {
+    //         numSoldiers += 1;
+    //     }
+    // }
 
     let targets = attackTarget();
     // TODO destructuring
@@ -91,54 +86,30 @@ fn runSoldier() throws GameActionException {
     }
 
     // Move
-    // Defend our Archon if we're not in very early game and we've seen enemies recently
-    // If we don't see enemy soldiers for 20 turns, we leave so we don't waste soldiers defending archons that aren't under attack
-    
-    // Go towards an enemy, but don't abandon the archon
-    let protect = closestArchon != null && protectTurns > 0 && rc.getRoundNum() > 40;
-    if move_target != null && (!protect || closestArchon.location.isWithinDistanceSquared(loc, 13)) {
+    // // Defend our Archon if we're not in very early game and there aren't too many soldiers around
+    // if closestArchon != null && numSoldiers < (2 + 3 * Mem::nearbyRobotsThem.len()) && rc.getRoundNum() > 100 {
+    //     // Try to stay about 13 units^2 of the archon so we're not in the way
+    //     let r2 = 13;
+    //     let closest: Direction = null;
+    //     let closest_d = 10000;
+    //     for dir in RobotPlayer::directions {
+    //         let l = loc.add(dir).add(dir);
+    //         if rc.canMove(dir) && rc.onTheMap(l) {
+    //             let d = abs(l.distanceSquaredTo(closestArchon.location) - r2);
+    //             if (d < closest_d) {
+    //                 closest = dir;
+    //                 closest_d = d;
+    //             }
+    //         }
+    //     }
+    //     if closest != null {
+    //         Paths::target = loc.add(closest);
+    //     }
+    // // Go towards an enemy, but only if we don't need to defend the Archon
+    // // TODO is it better to prioritize this or Archon defence?
+    // } else 
+    if move_target != null {
         Paths::target = move_target.location;
-    } else if protect { //&& numSoldiers < (2 + 3 * Mem::nearbyRobotsThem.len()) && rc.getRoundNum() > 100 {
-        // Try to stay about 13 units^2 of the archon so we're not in the way
-        protectTurns -= 1;
-        let r2 = 13;
-        let closest: Direction = null;
-        let closest_d = 10000;
-        for dir in RobotPlayer::directions {
-            let arch = closestArchon.location;
-            let l = loc.add(dir).add(dir);
-            if rc.canMove(dir) && rc.onTheMap(l) {
-                let d = l.distanceSquaredTo(arch);
-                if (arch.x + 6 * dir.dx > rc.getMapWidth()
-                    || arch.y + 6 * dir.dy > rc.getMapHeight()
-                    || arch.x - 6 < 0
-                    || arch.y - 6 < 0)
-                    && d >= loc.distanceSquaredTo(arch) {
-                        continue;
-                    }
-                d = abs(d - r2);
-                if (d < closest_d) {
-                    closest = dir;
-                    closest_d = d;
-                }
-            }
-        }
-        if closest != null {
-            Paths::target = loc.add(closest);
-        }
-    // Defend a friendly Archon in need of reinforcements
-    } else if rc.readSharedArray(14) != 0 {
-        let pos = Mem::decodeLoc(rc.readSharedArray(13));
-        if rc.canSenseLocation(pos) {
-            let bot = rc.senseRobotAtLocation(pos);
-            if bot == null || bot.type != RobotType::ARCHON {
-                // The archon died
-                rc.writeSharedArray(14, 0);
-            }
-        }
-        if loc.distanceSquaredTo(pos) < 1000 {
-            Paths::target = pos;
-        }
     // Go attack the closest enemy Archon
     } else if Mem::archons.len() > 0 {
         let closest: MapLocation = null;

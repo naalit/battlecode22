@@ -1,5 +1,5 @@
 extern {
-    package bytecoder;
+    package byterush;
     import battlecode.common.*;
 
     import java.util.Random;
@@ -52,9 +52,8 @@ fn pub run(rc2: RobotController) {
 // What number archon this is, i.e. how many archons go before it each turn
 // TODO update when a friendly archon dies
 let archonOrder = 0;
-let wasUnderAttack = false;
 
-let toBuild = [RobotType::MINER, RobotType::SOLDIER];
+let toBuild = [RobotType::MINER, RobotType::SOLDIER, RobotType::SOLDIER];
 let toBuildIdx = 0;
 
 fn runArchon() throws GameActionException {
@@ -73,38 +72,8 @@ fn runArchon() throws GameActionException {
         // let lead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared);
         // let nLead = lead.len();
         // if nLead < 2 { nLead = 2 }
-        let nearbyEnemies = 0;
-        for i in Mem::nearbyRobotsThem {
-            if i.type.damage > 0 {
-                nearbyEnemies += 1;
-            }
-        }
-        let nearbyDefenders = 0;
-        for i in Mem::nearbyRobotsMe {
-            if i.type.damage > 0 {
-                nearbyDefenders += 1;
-            }
-        }
 
-        let otherUnderAttack = rc.readSharedArray(14);
-
-        let underAttack = nearbyEnemies > nearbyDefenders;// || nearbyDefenders == 0;
-        if underAttack && !wasUnderAttack {
-            rc.writeSharedArray(14, archonOrder + 1);
-            rc.writeSharedArray(13, Mem::encodeLoc(rc.getLocation()));
-        } else if wasUnderAttack && !underAttack && otherUnderAttack - 1 == archonOrder {
-            rc.writeSharedArray(14, 0);
-        }
-        wasUnderAttack = underAttack;
-
-        // rc.setIndicatorString("14: " + rc.readSharedArray(14) + ", 13: " + rc.readSharedArray(13));
         let ty = toBuild[toBuildIdx];
-        if underAttack {
-            ty = RobotType::SOLDIER;
-            rc.setIndicatorString("[V] Under attack!");
-        } else if otherUnderAttack != 0 {
-            rc.setIndicatorString("Under attack: " + (otherUnderAttack - 1));
-        }
         // let ty = if rng.nextInt(2) == 0 && numMiners < nLead && Mem::nearbyRobotsThem.len() < Mem::nearbyRobotsMe.len()  {
         //     RobotType::MINER
         // } else {
@@ -112,11 +81,11 @@ fn runArchon() throws GameActionException {
         // };
         // Don't let one Archon dominate
         // They take turns spawning, or they can override the order if there's enough for each other archon to spawn a soldier to defend itself
-        let turn = rc.getRoundNum() % rc.getArchonCount();
+        // let turn = rc.getRoundNum() % rc.getArchonCount();
         // let roundsUntilOurs = if turn <= archonOrder { archonOrder - turn } else { archonOrder - turn + rc.getArchonCount() };
-        if turn == archonOrder
-            || rc.getTeamLeadAmount(team) > ty.buildCostLead + RobotType::SOLDIER.buildCostLead * (rc.getArchonCount() - archonOrder - 1) {
-        // if underAttack || otherUnderAttack == 0 {
+        // if turn == archonOrder
+        //     || rc.getTeamLeadAmount(team) > ty.buildCostLead + RobotType::SOLDIER.buildCostLead * (rc.getArchonCount() - archonOrder - 1) {
+        if rc.getTeamLeadAmount(team) >= ty.buildCostLead {
             for dir in directions {
                 if rc.canBuildRobot(ty, dir) {
                     rc.buildRobot(ty, dir);
@@ -125,7 +94,7 @@ fn runArchon() throws GameActionException {
                 }
             }
         }
-        // } else if roundsUntilOurs >= rc.getActionCooldownTurns() + 2 {
+        // else if roundsUntilOurs >= rc.getActionCooldownTurns() + 2 {
         //     // Try to repair a robot in range
         //     for i in Mem::nearbyRobotsMe {
         //         if i.health <= i.type.health - RobotType::ARCHON.getHealing(rc.getLevel()) && rc.canRepair(i.location) {

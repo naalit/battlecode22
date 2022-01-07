@@ -1,0 +1,253 @@
+extern {
+    package byterush;
+    import battlecode.common.*;
+}
+
+extern fn clockYield() = "Clock.yield";
+extern fn bytecodeNum(): i32 = "Clock.getBytecodeNum";
+extern fn bytecodeLeft(): i32 = "Clock.getBytecodesLeft";
+
+extern fn abs(i: i32): i32 = "Math.abs";
+
+extern enum AnomalyType {
+    ABYSS,
+    CHARGE,
+    FURY,
+    VORTEX,
+
+    // cont.
+}
+extern enum RobotType {
+    ARCHON,
+    BUILDER,
+    LABORATORY,
+    MINER,
+    SAGE,
+    SOLDIER,
+    WATCHTOWER;
+
+    let actionCooldown: i32;
+    let actionRadiusSquared: i32;
+    let buildCostGold: i32;
+    let buildCostLead: i32;
+    let bytecodeLimit: i32;
+    let damage: i32;
+    let health: i32;
+    let movementCooldown: i32;
+    let visionRadiusSquared: i32;
+
+    fn canAttack(): bool;
+    fn canMine(): bool;
+    fn canBuild(t: RobotType): bool;
+    fn canRepair(t: RobotType): bool;
+    fn canMutate(t: RobotType): bool;
+    fn isBuilding(): bool;
+
+    fn getDamage(lvl: i32): i32;
+    fn getHealing(lvl: i32): i32;
+
+    // cont.
+}
+extern enum RobotMode {
+    DROID,
+    PORTABLE,
+    PROTOTYPE,
+    TURRET,
+}
+extern enum Team {
+    A,
+    B,
+    NEUTRAL;
+
+    fn isPlayer(): bool;
+    fn opponent(): Team;
+}
+extern enum Direction {
+    NORTH,
+    NORTHEAST,
+    NORTHWEST,
+    SOUTH,
+    SOUTHEAST,
+    SOUTHWEST,
+    EAST,
+    WEST,
+    CENTER;
+
+    let dx: i32;
+    let dy: i32;
+
+    fn rotateLeft(): Direction;
+    fn rotateRight(): Direction;
+    fn opposite(): Direction;
+}
+extern class MapLocation {
+    constructor(x: i32, y: i32);
+    let x: i32;
+    let y: i32;
+
+    fn add(dir: Direction): MapLocation;
+    fn sub(dir: Direction): MapLocation = "subtract";
+    fn dirTo(loc: MapLocation): Direction = "directionTo";
+    fn distanceSquaredTo(loc: MapLocation): i32;
+    fn isWithinDistanceSquared(loc: MapLocation, distanceSquared: i32): bool;
+    fn translate(dx: i32, dy: i32): MapLocation;
+    fn isAdjacentTo(loc: MapLocation): bool;    
+    fn toString(): str;
+}
+
+extern class RobotInfo {
+    let health: i32;
+    let ID: i32;
+    let level: i32;
+    let location: MapLocation;
+    let mode: RobotMode;
+    let team: Team;
+    let type: RobotType;
+}
+extern class AnomalyScheduleEntry {
+    let anomalyType: AnomalyType;
+    let roundNumber: i32;
+}
+
+extern class RobotController {
+    // Returns the location adjacent to current location in the given direction.
+    fn adjacentLocation(dir: Direction): MapLocation;
+
+    // Attack a given location.
+    fn attack(loc: MapLocation);
+
+    // Builds a robot of the given type in the given direction.
+    fn buildRobot(type: RobotType, dir: Direction);
+
+    // Tests whether this robot can attack the given location.
+    fn canAttack(loc: MapLocation): bool;
+    // Tests whether the robot can build a robot of the given type in the given direction.
+    fn canBuildRobot(type: RobotType, dir: Direction): bool;
+    // Tests whether this robot can envision an anomaly centered at the robot's location.
+    fn canEnvision(anomaly: AnomalyType): bool;
+    // Tests whether the robot can mine gold at a given location.
+    fn canMineGold(loc: MapLocation): bool;
+    // Tests whether the robot can mine lead at a given location.
+    fn canMineLead(loc: MapLocation): bool;
+    // Checks whether this robot can move one step in the given direction.
+    fn canMove(dir: Direction): bool;
+    // Tests whether this robot can mutate the building at the given location.
+    fn canMutate(loc: MapLocation): bool;
+    // Tests whether this robot can repair a robot at the given location.
+    fn canRepair(loc: MapLocation): bool;
+    // Checks whether the given location is within the robot's vision range, and if it is on the map.
+    fn canSenseLocation(loc: MapLocation): bool;
+    // Checks whether a point at the given radius squared is within the robot's vision range.
+    fn canSenseRadiusSquared(radiusSquared: i32): bool;
+    // Tests whether the given robot exists and if it is within this robot's vision range.
+    fn canSenseRobot(id: i32): bool;
+    // Checks whether a robot is at a given location.
+    fn canSenseRobotAtLocation(loc: MapLocation): bool;
+    // Tests whether this robot can transform.
+    fn canTransform(): bool;
+    // Tests whether this robot can transmute lead into gold.
+    fn canTransmute(): bool;
+
+    // Destroys the robot.
+    fn disintegrate();
+    // Envision an anomaly centered at the robot's location.
+    fn envision(anomaly: AnomalyType);
+
+    // Returns the number of action cooldown turns remaining before this unit can act again.
+    fn getActionCooldownTurns(): i32;
+    // Returns a list of all locations within the given radiusSquared of a location.
+    fn getAllLocationsWithinRadiusSquared(center: MapLocation, radiusSquared: i32): [MapLocation];
+    fn getAnomalySchedule(): [AnomalyScheduleEntry]; 
+    // Returns the number of Archons on your team.
+    fn getArchonCount(): i32;
+    // Returns this robot's current health.
+    fn getHealth(): i32;
+    // Returns the ID of this robot.
+    fn getID(): i32;
+    // Returns this robot's current level.
+    fn getLevel(): i32;
+    // Returns this robot's current location.
+    fn getLocation(): MapLocation;
+    // Returns the height of the game map.
+    fn getMapHeight(): i32;
+    // Returns the width of the game map.
+    fn getMapWidth(): i32;
+    // Returns this robot's mode (DROID, PROTOTYPE, TURRET, PORTABLE).
+    fn getMode(): RobotMode;
+    // Returns the number of movement cooldown turns remaining before this unit can move again.
+    fn getMovementCooldownTurns(): i32;
+    // Returns the number of robots on your team, including Archons.
+    fn getRobotCount(): i32;
+    // Returns the current round number, where round 1 is the first round of the match.
+    fn getRoundNum(): i32;
+    // Returns this robot's Team.
+    fn getTeam(): Team;
+    // Returns the amount of gold a team has in its reserves.
+    fn getTeamGoldAmount(team: Team): i32;
+    // Returns the amount of lead a team has in its reserves.
+    fn getTeamLeadAmount(team: Team): i32;
+    // Returns the number of cooldown turns remaining before this unit can transform again.
+    fn getTransformCooldownTurns(): i32;
+    // Get lead to gold transmutation rate.
+    fn getTransmutationRate(): i32;
+    // Returns this robot's type (MINER, ARCHON, BUILDER, etc.).
+    fn getType(): RobotType;
+    // Tests whether the robot can act.
+    fn isActionReady(): bool;
+    // Checks whether a robot is at a given location.
+    fn isLocationOccupied(loc: MapLocation): bool;
+    // Tests whether the robot can move.
+    fn isMovementReady(): bool;
+    // Tests whether the robot can transform.
+    fn isTransformReady(): bool;
+    // Mine a gold at given location.
+    fn mineGold(loc: MapLocation);
+    // Mine lead at a given location.
+    fn mineLead(loc: MapLocation);
+    // Moves one step in the given direction.
+    fn move(dir: Direction);
+    // Mutate a building at a given location.
+    fn mutate(loc: MapLocation);
+    // Checks whether a MapLocation is on the map.
+    fn onTheMap(loc: MapLocation): bool;
+    // Given an index, returns the value at that index in the team array.
+    fn readSharedArray(index: i32): i32;
+    // Repairs at a given location.
+    fn repair(loc: MapLocation);
+    // Causes your team to lose the game.
+    fn resign();
+    // Given a location, returns the gold count of that location.
+    fn senseGold(loc: MapLocation): i32;
+    // Given a location, returns the lead count of that location.
+    fn senseLead(loc: MapLocation): i32;
+    // Return all locations that contain a nonzero amount of gold, within a specified radius of your robot location.
+    fn senseNearbyLocationsWithGold(radiusSquared: i32): [MapLocation];
+    // Return all locations that contain a nonzero amount of lead, within a specified radius of your robot location.
+    fn senseNearbyLocationsWithLead(radiusSquared: i32): [MapLocation];
+    // Returns all robots within vision radius.
+    fn senseNearbyRobots(): [RobotInfo];
+    // Returns all robots that can be sensed within a certain distance of this robot.
+    fn senseNearbyRobotsR(radiusSquared: i32): [RobotInfo] = "senseNearbyRobots";
+    // Returns all robots of a given team that can be sensed within a certain distance of this robot.
+    fn senseNearbyRobotsT(radiusSquared: i32, team: Team): [RobotInfo] = "senseNearbyRobots";
+    // Returns all robots of a given team that can be sensed within a certain radius of a specified location.
+    fn senseNearbyRobotsAt(center: MapLocation, radiusSquared: i32, team: Team): [RobotInfo] = "senseNearbyRobots";
+    // Senses information about a particular robot given its ID.
+    fn senseRobot(id: i32): RobotInfo;
+    // Senses the robot at the given location, or null if there is no robot there.
+    fn senseRobotAtLocation(loc: MapLocation): RobotInfo;
+    // Given a location, returns the rubble of that location.
+    fn senseRubble(loc: MapLocation): i32;
+    // Draw a dot on the game map for debugging purposes.
+    fn setIndicatorDot(loc: MapLocation, red: i32, green: i32, blue: i32);
+    // Draw a line on the game map for debugging purposes.
+    fn setIndicatorLine(startLoc: MapLocation, endLoc: MapLocation, red: i32, green: i32, blue: i32);
+    // Sets the indicator string for this robot for debugging purposes.
+    fn setIndicatorString(string: str);
+    // Transform from turret into portable or vice versa.
+    fn transform();
+    // Transmute lead into gold.
+    fn transmute();
+    // Sets a team's array value at a specified index.
+    fn writeSharedArray(index: i32, value: i32);
+}

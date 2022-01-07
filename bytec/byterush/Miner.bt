@@ -1,5 +1,5 @@
 extern {
-    package bytecoder;
+    package byterush;
     import battlecode.common.*;
 }
 
@@ -40,7 +40,7 @@ fn runMiner() throws GameActionException {
     //     Paths::target = loc.add(dirAway).add(dirAway);
     // } else {
         // If we can see any metals, go mine them
-        let best_lead = 0;
+        let best_lead = 1;
         let best_loc: MapLocation = null;
         for l in rc.senseNearbyLocationsWithGold(rc.getType().visionRadiusSquared) {
             let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
@@ -57,20 +57,8 @@ fn runMiner() throws GameActionException {
             }
         }
 
-        if best_lead > 1 {
+        if best_loc != null {
             Paths::target = best_loc;
-        } else if best_lead == 1 && rc.getRoundNum() > 40 {
-            // If lead will regenerate, make sure there's a miner by it
-            let isMiner = false;
-            for i in Mem::nearbyRobotsMe {
-                if i.type == RobotType::MINER {
-                    isMiner = true;
-                    break;
-                }
-            }
-            if !isMiner {
-                Paths::target = best_loc;
-            }
         }
     // }
     Paths::targetMove(true);

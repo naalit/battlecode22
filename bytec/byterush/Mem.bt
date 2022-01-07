@@ -1,5 +1,5 @@
 extern {
-    package bytecoder;
+    package byterush;
     import battlecode.common.*;
 }
 
@@ -32,7 +32,7 @@ fn maintain() throws GameActionException {
     if btc > max_btc {
         max_btc = btc;
     }
-    // rc.setIndicatorString("Max maintain() btc: " + max_btc + ", avg: " + tot_btc / maintain_count);
+    rc.setIndicatorString("Max maintain() btc: " + max_btc + ", avg: " + tot_btc / maintain_count);
 }
 
 // A location takes up 12 bits
