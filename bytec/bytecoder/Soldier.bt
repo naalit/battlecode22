@@ -126,33 +126,23 @@ fn runSoldier() throws GameActionException {
         if closest != null {
             Paths::target = loc.add(closest);
         }
-    // Defend a friendly Archon in need of reinforcements
-    } else if rc.readSharedArray(14) != 0 {
-        let pos = Mem::decodeLoc(rc.readSharedArray(13));
-        if rc.canSenseLocation(pos) {
-            let bot = rc.senseRobotAtLocation(pos);
-            if bot == null || bot.type != RobotType::ARCHON {
-                // The archon died
-                rc.writeSharedArray(14, 0);
+    } else if Mem::commands.len() > 0 {
+        for i in Mem::commands {
+            match i {
+                Attack(l) => {
+                    Paths::target = l;
+                    Mem::addAvailableSoldier();
+                }
+                EndAttack => {
+                    Paths::target = null;
+                    Mem::addAvailableSoldier();
+                }
+                Protect(l) => Paths::target = l,
             }
+            // break;
         }
-        if loc.distanceSquaredTo(pos) < 1000 {
-            Paths::target = pos;
-        }
-    // Go attack the closest enemy Archon
-    } else if Mem::archons.len() > 0 {
-        let closest: MapLocation = null;
-        let closest_d = 10000;
-        for i in Mem::archons {
-            let d = i.distanceSquaredTo(loc);
-            if d < closest_d {
-                closest_d = d;
-                closest = i;
-            }
-        }
-        if closest != null {
-            Paths::target = closest;
-        }
+    } else {
+        Mem::addAvailableSoldier();
     }
     Paths::targetMove(true);
 }

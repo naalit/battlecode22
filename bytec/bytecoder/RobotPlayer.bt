@@ -6,6 +6,7 @@ extern {
 }
 
 use Common::*;
+use Mem::Cmd;
 
 extern class Random {
     constructor(seed: i32);
@@ -53,17 +54,83 @@ fn pub run(rc2: RobotController) {
 // TODO update when a friendly archon dies
 let archonOrder = 0;
 let wasUnderAttack = false;
+let archonCount = 0;
 
 let toBuild = [RobotType::MINER, RobotType::SOLDIER];
 let toBuildIdx = 0;
 
-fn runArchon() throws GameActionException {
-    if rc.getRoundNum() == 1 {
-        archonOrder = rc.readSharedArray(15);
-        rc.writeSharedArray(15, archonOrder + 1);
+let attacking: MapLocation;
+let otherAttacking = false;
 
+fn runArchon() throws GameActionException {
+    if archonCount != rc.getArchonCount() {
+        archonCount = rc.getArchonCount();
+        archonOrder = rc.readSharedArray(14);
+        if archonOrder == rc.getArchonCount() - 1 {
+            rc.writeSharedArray(14, 0);
+        } else {
+            rc.writeSharedArray(14, archonOrder + 1);
+        }
+    }
+
+    if rc.getRoundNum() == 1 {
         rc.buildRobot(RobotType::MINER, Direction::SOUTH);
     } else {
+        if archonOrder == 0 {
+            Mem::clearCmds();
+        }
+        for i in Mem::commands {
+            match i {
+                Attack(l) => if attacking == null {
+                    println("Other: Start attack on " + l);
+                    attacking = l;
+                    otherAttacking = true;
+                }
+                EndAttack => if attacking != null {
+                    println("Other: End attack on " + attacking);
+                    attacking = null;
+                    otherAttacking = false;
+                }
+                Protect(_) => {},
+            }
+        }
+        for i in Mem::commandsLast {
+            match i {
+                Attack(l) => if attacking == null {
+                    println("Other: Start attack on " + l);
+                    attacking = l;
+                    otherAttacking = true;
+                }
+                EndAttack => if attacking != null {
+                    println("Other: End attack on " + attacking);
+                    attacking = null;
+                    otherAttacking = false;
+                }
+                Protect(_) => {},
+            }
+        }
+        let availableSoldiers = Mem::getAvailableSoldiers();
+        if archonOrder == rc.getArchonCount() - 1 {
+            Mem::clearAvailableSoldiers();
+        }
+        // Make sure the attack target still exists
+        if attacking != null {
+            let found = false;
+            for i in Mem::archons {
+                if i == attacking {
+                    found = true;
+                    break;
+                }
+            }
+            if !found || availableSoldiers < 5 {
+                println("Self: End attack on " + attacking + " (dead)");
+                attacking = null;
+                otherAttacking = false;
+                Mem::pushCmd(Cmd::EndAttack);
+                rc.setIndicatorString("End attack");
+            }
+        }
+
         // let numMiners = 0;
         // for i in Mem::nearbyRobotsMe {
         //     if i.type == RobotType::MINER {
@@ -86,14 +153,14 @@ fn runArchon() throws GameActionException {
             }
         }
 
-        let otherUnderAttack = rc.readSharedArray(14);
+        let otherUnderAttack = rc.readSharedArray(13);
 
         let underAttack = nearbyEnemies > nearbyDefenders;// || nearbyDefenders == 0;
         if underAttack && !wasUnderAttack {
-            rc.writeSharedArray(14, archonOrder + 1);
-            rc.writeSharedArray(13, Mem::encodeLoc(rc.getLocation()));
+            rc.writeSharedArray(13, archonOrder + 1);
+            // rc.writeSharedArray(13, Mem::encodeLoc(rc.getLocation()));
         } else if wasUnderAttack && !underAttack && otherUnderAttack - 1 == archonOrder {
-            rc.writeSharedArray(14, 0);
+            rc.writeSharedArray(13, 0);
         }
         wasUnderAttack = underAttack;
 
@@ -102,9 +169,24 @@ fn runArchon() throws GameActionException {
         if underAttack {
             ty = RobotType::SOLDIER;
             rc.setIndicatorString("[V] Under attack!");
-        } else if otherUnderAttack != 0 {
-            rc.setIndicatorString("Under attack: " + (otherUnderAttack - 1));
+            if attacking != null {
+                println("Self: End attack on " + attacking + " (under attack)");
+                attacking = null;
+                otherAttacking = false;
+                Mem::pushCmd(Cmd::EndAttack);
+                rc.setIndicatorString("End attack");
+            }
+        } else if !otherAttacking && otherUnderAttack == 0 && Mem::archons.len() > 0 && availableSoldiers > 5 && attacking == null {
+            attacking = Mem::archons[0];
+            println("Self: Start attack on " + attacking);
         }
+        if attacking != null && !otherAttacking {
+            Mem::pushCmd(Cmd::Attack(attacking));
+            rc.setIndicatorString("ATTACK!");
+        }
+        // else if otherUnderAttack != 0 {
+        //     rc.setIndicatorString("Under attack: " + (otherUnderAttack - 1));
+        // }
         // let ty = if rng.nextInt(2) == 0 && numMiners < nLead && Mem::nearbyRobotsThem.len() < Mem::nearbyRobotsMe.len()  {
         //     RobotType::MINER
         // } else {
