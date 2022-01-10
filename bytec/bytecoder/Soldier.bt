@@ -99,7 +99,29 @@ fn runSoldier() throws GameActionException {
 
     // Go towards an enemy, but don't abandon the archon
     let protect = closestArchon != null && protectTurns > 0 && rc.getRoundNum() > 40;
-    if move_target != null && (!protect || closestArchon.location.isWithinDistanceSquared(loc, 13)) {
+    if attack_target != null {
+        // Combat mode pathfinding
+        // We attack faster on lower rubble tiles
+        let curRubble = rc.senseRubble(loc);
+        let minRubble = curRubble;
+        let minDir = Direction::CENTER;
+        for dir in RobotPlayer::directions {
+            let new_loc = loc.add(dir);
+            if rc.canMove(dir) && new_loc.isWithinDistanceSquared(attack_target.location, rc.getType().actionRadiusSquared) {
+                let rubble = rc.senseRubble(new_loc);
+                if rubble < minRubble {
+                    minRubble = rubble;
+                    minDir = dir;
+                }
+            }
+        }
+        if minDir != Direction::CENTER {
+            if rc.canMove(minDir) {
+                rc.move(minDir);
+            }
+        }
+        return;
+    } else if move_target != null && (!protect || closestArchon.location.isWithinDistanceSquared(loc, 13)) {
         Paths::target = move_target.location;
     } else if protect { //&& numSoldiers < (2 + 3 * Mem::nearbyRobotsThem.len()) && rc.getRoundNum() > 100 {
         // Try to stay about 13 units^2 of the archon so we're not in the way
