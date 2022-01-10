@@ -42,6 +42,7 @@ fn pub run(rc2: RobotController) {
             ARCHON => runArchon(),
             MINER => Miner::runMiner(),
             SOLDIER => Soldier::runSoldier(),
+            BUILDER => runBuilder(),
             else => {},
         }
 
@@ -58,6 +59,7 @@ let archonCount = 0;
 
 let toBuild = [RobotType::MINER, RobotType::SOLDIER];
 let toBuildIdx = 0;
+let sacTurns = 0;
 
 let attacking: MapLocation;
 let otherAttacking = false;
@@ -79,6 +81,7 @@ fn runArchon() throws GameActionException {
         if archonOrder == 0 {
             Mem::clearCmds();
         }
+        sacTurns -= 1;
         for i in Mem::commands {
             match i {
                 Attack(l) => if attacking == null {
@@ -119,8 +122,8 @@ fn runArchon() throws GameActionException {
         //         numMiners += 1;
         //     }
         // }
-        // let lead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared);
-        // let nLead = lead.len();
+        let lead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared);
+        let nLead = lead.len();
         // if nLead < 2 { nLead = 2 }
         let nearbyEnemies = 0;
         for i in Mem::nearbyRobotsThem {
@@ -159,8 +162,16 @@ fn runArchon() throws GameActionException {
                 Mem::pushCmd(Cmd::EndAttack);
                 rc.setIndicatorString("End attack");
             }
-        } else if !otherAttacking && otherUnderAttack == 0 && Mem::archons.len() > 0 && availableSoldiers > 5 && attacking == null {
-            attacking = Mem::archons[0];
+        } else {
+            if !otherAttacking && otherUnderAttack == 0 && Mem::archons.len() > 0 && availableSoldiers > 5 && attacking == null {
+                attacking = Mem::archons[0];
+            }
+            if nLead < 15 && sacTurns <= 0 {
+                ty = RobotType::BUILDER;
+                if rc.getActionCooldownTurns() == 0 && rc.getTeamLeadAmount(team) > ty.buildCostLead {
+                    sacTurns = 30;
+                }
+            }
         }
         if attacking != null && !otherAttacking {
             Mem::pushCmd(Cmd::Attack(attacking));
@@ -201,3 +212,19 @@ fn runArchon() throws GameActionException {
     }
 }
 
+fn runBuilder() throws GameActionException {
+    // Sacrifice itself
+    let loc = rc.getLocation();
+    if rc.senseLead(loc) == 0 {
+        rc.disintegrate();
+    } else {
+        for dir in directions {
+            let l = loc.add(dir);
+            if rc.canMove(dir) && rc.senseLead(l) == 0 {
+                rc.move(dir);
+                return;
+            }
+        }
+        Paths::targetMove(true);
+    }
+}
