@@ -8,6 +8,9 @@ use RobotPlayer::rc;
 
 let target: MapLocation;
 let lastRetarget: MapLocation;
+// Another location that the pathfinding algorithm will try to stay close to
+let attractor: MapLocation;
+
 
 let closest_archon: MapLocation;
 fn findArchon() {
@@ -46,6 +49,7 @@ fn targetMove(exploring: bool): bool throws GameActionException {
         loc.add(dir.rotateLeft().rotateLeft()), loc.add(dir.rotateRight().rotateRight()) ];
     let best: MapLocation = null;
     let best_pass = 100;
+    let best_adist = 1000;
     let prev_dist2 = loc.distanceSquaredTo(target);
     for i in options {
         // Don't occupy archon spawning spaces
@@ -70,9 +74,13 @@ fn targetMove(exploring: bool): bool throws GameActionException {
                     pass = r;
                 }
             }
-            if pass + rc.senseRubble(i) < best_pass {
+            let totPass = pass + rc.senseRubble(i);
+            if totPass < best_pass || (totPass == best_pass && attractor != null && i.isWithinDistanceSquared(attractor, best_adist)) {
                 best = i;
-                best_pass = pass + rc.senseRubble(i);
+                best_pass = totPass;
+                if attractor != null {
+                    best_adist = i.distanceSquaredTo(attractor);
+                }
             }
         }
     }
