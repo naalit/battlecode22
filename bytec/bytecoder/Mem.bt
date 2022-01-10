@@ -44,6 +44,8 @@ fn decodeLoc(x: i32): MapLocation = MapLocation(x & 0b111111, (x >> 6) & 0b11111
 
 let ARCHON_LOC = 0;
 let CMD_LOC = 16;
+// There are two command queues that we switch between
+// This is so that Archons can read messages sent last turn by other Archons later in the order
 fn cmdLoc(): i32 throws GameActionException {
     CMD_LOC + 16 * (rc.getRoundNum() % 2)
 }
@@ -109,7 +111,6 @@ fn pushCmd(cmd: Cmd) throws GameActionException {
     rc.writeSharedArray(i+1, 0);
 }
 let commands: [Cmd] = [];
-let commandsLast: [Cmd] = [];
 fn readCmds() throws GameActionException {
     commands.clear();
     let i = cmdLoc();
@@ -128,7 +129,6 @@ fn readCmds() throws GameActionException {
     }
 
     if rc.getType() == RobotType::ARCHON {
-        commandsLast.clear();
         let i = cmdLocOther();
         loop {
             let cmdi = rc.readSharedArray(i);
@@ -139,7 +139,7 @@ fn readCmds() throws GameActionException {
             if cmd == null {
                 println("Warning: Could not decode cmd " + cmdi);
             } else {
-                commandsLast.push(cmd);
+                commands.push(cmd);
             }
             i += 1;
         }

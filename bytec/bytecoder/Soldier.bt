@@ -63,6 +63,7 @@ fn attackTarget(): (RobotInfo, RobotInfo) {
     (near, far)
 }
 
+let lastProtect: MapLocation = null;
 fn runSoldier() throws GameActionException {
     let loc = rc.getLocation();
 
@@ -93,7 +94,9 @@ fn runSoldier() throws GameActionException {
     // Move
     // Defend our Archon if we're not in very early game and we've seen enemies recently
     // If we don't see enemy soldiers for 20 turns, we leave so we don't waste soldiers defending archons that aren't under attack
-    
+
+    let protectStill = false;
+
     // Go towards an enemy, but don't abandon the archon
     let protect = closestArchon != null && protectTurns > 0 && rc.getRoundNum() > 40;
     if move_target != null && (!protect || closestArchon.location.isWithinDistanceSquared(loc, 13)) {
@@ -127,22 +130,31 @@ fn runSoldier() throws GameActionException {
             Paths::target = loc.add(closest);
         }
     } else if Mem::commands.len() > 0 {
+        let available = true;
         for i in Mem::commands {
             match i {
-                Attack(l) => {
+                Attack(l) => Paths::target = l,
+                EndAttack => Paths::target = null,
+                Protect(l) => {
+                    protectStill = true;
+                    lastProtect = l;
                     Paths::target = l;
-                    Mem::addAvailableSoldier();
+                    available = false;
                 }
-                EndAttack => {
-                    Paths::target = null;
-                    Mem::addAvailableSoldier();
-                }
-                Protect(l) => Paths::target = l,
             }
             // break;
         }
+        if available {
+            Mem::addAvailableSoldier();
+        }
     } else {
         Mem::addAvailableSoldier();
+    }
+    if !protectStill && lastProtect != null {
+        if lastProtect == Paths::target {
+            Paths::target = null;
+        }
+        lastProtect = null;
     }
     Paths::targetMove(true);
 }

@@ -82,27 +82,10 @@ fn runArchon() throws GameActionException {
         for i in Mem::commands {
             match i {
                 Attack(l) => if attacking == null {
-                    println("Other: Start attack on " + l);
                     attacking = l;
                     otherAttacking = true;
                 }
                 EndAttack => if attacking != null {
-                    println("Other: End attack on " + attacking);
-                    attacking = null;
-                    otherAttacking = false;
-                }
-                Protect(_) => {},
-            }
-        }
-        for i in Mem::commandsLast {
-            match i {
-                Attack(l) => if attacking == null {
-                    println("Other: Start attack on " + l);
-                    attacking = l;
-                    otherAttacking = true;
-                }
-                EndAttack => if attacking != null {
-                    println("Other: End attack on " + attacking);
                     attacking = null;
                     otherAttacking = false;
                 }
@@ -123,7 +106,6 @@ fn runArchon() throws GameActionException {
                 }
             }
             if !found || availableSoldiers < 5 {
-                println("Self: End attack on " + attacking + " (dead)");
                 attacking = null;
                 otherAttacking = false;
                 Mem::pushCmd(Cmd::EndAttack);
@@ -158,9 +140,11 @@ fn runArchon() throws GameActionException {
         let underAttack = nearbyEnemies > nearbyDefenders;// || nearbyDefenders == 0;
         if underAttack && !wasUnderAttack {
             rc.writeSharedArray(13, archonOrder + 1);
-            // rc.writeSharedArray(13, Mem::encodeLoc(rc.getLocation()));
         } else if wasUnderAttack && !underAttack && otherUnderAttack - 1 == archonOrder {
             rc.writeSharedArray(13, 0);
+        }
+        if underAttack {
+            Mem::pushCmd(Cmd::Protect(rc.getLocation()));
         }
         wasUnderAttack = underAttack;
 
@@ -170,7 +154,6 @@ fn runArchon() throws GameActionException {
             ty = RobotType::SOLDIER;
             rc.setIndicatorString("[V] Under attack!");
             if attacking != null {
-                println("Self: End attack on " + attacking + " (under attack)");
                 attacking = null;
                 otherAttacking = false;
                 Mem::pushCmd(Cmd::EndAttack);
@@ -178,7 +161,6 @@ fn runArchon() throws GameActionException {
             }
         } else if !otherAttacking && otherUnderAttack == 0 && Mem::archons.len() > 0 && availableSoldiers > 5 && attacking == null {
             attacking = Mem::archons[0];
-            println("Self: Start attack on " + attacking);
         }
         if attacking != null && !otherAttacking {
             Mem::pushCmd(Cmd::Attack(attacking));
