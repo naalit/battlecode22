@@ -75,8 +75,22 @@ fn runArchon() throws GameActionException {
         }
     }
 
+
+    let miner_dir = Direction::SOUTH;
+    let best_dist = 10000;
+    let best_lead = 0;
+    let lead_locs = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared);
+    for l in lead_locs {
+        let dist = l.distanceSquaredTo(rc.getLocation());
+        let lead = rc.senseLead(l);
+        if (lead > 1 && dist < best_dist) || (lead > best_lead && dist <= best_dist) {
+            best_dist = dist;
+            best_lead = lead;
+            miner_dir = rc.getLocation().dirTo(l);
+        }
+    }
     if rc.getRoundNum() == 1 {
-        rc.buildRobot(RobotType::MINER, Direction::SOUTH);
+        rc.buildRobot(RobotType::MINER, miner_dir);
     } else {
         if archonOrder == 0 {
             Mem::clearCmds();
@@ -122,8 +136,7 @@ fn runArchon() throws GameActionException {
         //         numMiners += 1;
         //     }
         // }
-        let lead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared);
-        let nLead = lead.len();
+        let nLead = lead_locs.len();
         // if nLead < 2 { nLead = 2 }
         let nearbyEnemies = 0;
         for i in Mem::nearbyRobotsThem {
@@ -192,6 +205,12 @@ fn runArchon() throws GameActionException {
         if turn == archonOrder
             || rc.getTeamLeadAmount(team) > ty.buildCostLead + RobotType::SOLDIER.buildCostLead * (rc.getArchonCount() - archonOrder - 1) {
         // if underAttack || otherUnderAttack == 0 {
+            if ty == RobotType::MINER && best_lead > 1 {
+                if rc.canBuildRobot(ty, miner_dir) {
+                    rc.buildRobot(ty, miner_dir);
+                    toBuildIdx = (toBuildIdx + 1) % toBuild.len();
+                }
+            }
             for dir in directions {
                 if rc.canBuildRobot(ty, dir) {
                     rc.buildRobot(ty, dir);
