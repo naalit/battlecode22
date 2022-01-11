@@ -43,6 +43,7 @@ fn pub run(rc2: RobotController) {
             MINER => Miner::runMiner(),
             SOLDIER => Soldier::runSoldier(),
             BUILDER => runBuilder(),
+            WATCHTOWER => Soldier::runWatchtower(),
             else => {},
         }
 
@@ -60,6 +61,7 @@ let archonCount = 0;
 let toBuild = [RobotType::MINER, RobotType::SOLDIER];
 let toBuildIdx = 0;
 let sacTurns = 0;
+let builderTurns = 0;
 
 let attacking: MapLocation;
 let otherAttacking = false;
@@ -82,6 +84,9 @@ fn runArchon() throws GameActionException {
     let lead_locs = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared);
     for l in lead_locs {
         let dist = l.distanceSquaredTo(rc.getLocation());
+        if dist == 0 {
+            continue;
+        }
         let lead = rc.senseLead(l);
         if (lead > 1 && dist < best_dist) || (lead > best_lead && dist <= best_dist) {
             best_dist = dist;
@@ -96,6 +101,7 @@ fn runArchon() throws GameActionException {
             Mem::clearCmds();
         }
         sacTurns -= 1;
+        builderTurns -= 1;
         for i in Mem::commands {
             match i {
                 Attack(l) => if attacking == null {
@@ -183,6 +189,13 @@ fn runArchon() throws GameActionException {
                 ty = RobotType::BUILDER;
                 if rc.getActionCooldownTurns() == 0 && rc.getTeamLeadAmount(team) > ty.buildCostLead {
                     sacTurns = 30;
+                    rc.writeSharedArray(12, 1);
+                }
+            } else if rc.getTeamLeadAmount(team) >= 400 && builderTurns <= 0 {
+                ty = RobotType::BUILDER;
+                if rc.getActionCooldownTurns() == 0 && rc.getTeamLeadAmount(team) > ty.buildCostLead {
+                    builderTurns = 50;
+                    rc.writeSharedArray(12, 0);
                 }
             }
         }
@@ -231,17 +244,74 @@ fn runArchon() throws GameActionException {
     }
 }
 
+let sac = false;
+let builderStart = true;
 fn runBuilder() throws GameActionException {
-    // Sacrifice itself
     let loc = rc.getLocation();
-    if rc.senseLead(loc) == 0 {
-        rc.disintegrate();
+    if builderStart {
+        builderStart = false;
+        sac = rc.readSharedArray(12) == 1;
+    }
+    if sac {
+        // Sacrifice itself
+        if rc.senseLead(loc) == 0 {
+            rc.disintegrate();
+        } else {
+            for dir in directions {
+                let l = loc.add(dir);
+                if rc.canMove(dir) && rc.senseLead(l) == 0 {
+                    rc.move(dir);
+                    return;
+                }
+            }
+            Paths::targetMove(true);
+        }
     } else {
-        for dir in directions {
-            let l = loc.add(dir);
-            if rc.canMove(dir) && rc.senseLead(l) == 0 {
-                rc.move(dir);
+        // Build watchtowers
+        let nWatchtowers = 0;
+        let archonDist = 1000;
+        let repairLoc: MapLocation = null;
+        let repairDist = 1000;
+        for i in Mem::nearbyRobotsMe {
+            if i.type == RobotType::WATCHTOWER {
+                nWatchtowers += 1;
+                if i.health != i.type.health {
+                    let dist = i.location.distanceSquaredTo(loc);
+                    if dist < repairDist {
+                        repairDist = dist;
+                        repairLoc = i.location;
+                    }
+                }
+            } else if i.type == RobotType::ARCHON {
+                let dist = i.location.distanceSquaredTo(loc);
+                if dist < archonDist {
+                    archonDist = dist;
+                }
+            }
+        }
+        if repairLoc != null {
+            if rc.canRepair(repairLoc) {
+                rc.repair(repairLoc);
                 return;
+            }
+            Paths::target = repairLoc;
+        } if nWatchtowers < 2 && archonDist > 13 {
+            // Watchtower building mode
+            let best_pass = 10000;
+            let best_dir: Direction = null;
+            for dir in directions {
+                let l = loc.add(dir);
+                if !rc.onTheMap(l) || rc.senseRobotAtLocation(l) != null {
+                    continue;
+                }
+                let pass = rc.senseRubble(l);
+                if pass < best_pass {
+                    best_pass = pass;
+                    best_dir = dir;
+                }
+            }
+            if rc.canBuildRobot(RobotType::WATCHTOWER, best_dir) {
+                rc.buildRobot(RobotType::WATCHTOWER, best_dir);
             }
         }
         Paths::targetMove(true);

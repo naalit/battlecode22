@@ -66,6 +66,20 @@ fn attackTarget(): (RobotInfo, RobotInfo) {
     (near, far)
 }
 
+fn runWatchtower() throws GameActionException {
+    let targets = attackTarget();
+    // TODO destructuring
+    let attack_target = targets.0;
+    let move_target = targets.1;
+
+    // Attack
+    if attack_target != null {
+        if rc.canAttack(attack_target.location) {
+            rc.attack(attack_target.location);
+        }
+    }
+}
+
 let lastProtect: MapLocation = null;
 fn runSoldier() throws GameActionException {
     let loc = rc.getLocation();
