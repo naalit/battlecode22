@@ -310,7 +310,7 @@ fn runBuilder() throws GameActionException {
                     best_dir = dir;
                 }
             }
-            if rc.canBuildRobot(RobotType::WATCHTOWER, best_dir) {
+            if best_dir != null && rc.canBuildRobot(RobotType::WATCHTOWER, best_dir) {
                 rc.buildRobot(RobotType::WATCHTOWER, best_dir);
             }
         }
