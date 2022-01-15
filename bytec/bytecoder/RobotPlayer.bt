@@ -184,18 +184,24 @@ fn runArchon() throws GameActionException {
             if !otherAttacking && otherUnderAttack == 0 && Mem::archons.len() > 0 && availableSoldiers > 5 && attacking == null {
                 attacking = Mem::archons[0];
             }
+
+            ifdef FARM_LEAD
             if nLead < 15 && sacTurns <= 0 {
                 ty = RobotType::BUILDER;
                 if rc.getActionCooldownTurns() == 0 && rc.getTeamLeadAmount(team) > ty.buildCostLead {
                     sacTurns = 30;
                     rc.writeSharedArray(12, 1);
                 }
-                // TODO what should these heuristics be?
-            } else if rc.getTeamLeadAmount(team) >= 400 && builderTurns <= 0 {
+            }
+
+            // TODO what should these heuristics be?
+            if rc.getTeamLeadAmount(team) >= 400 && builderTurns <= 0 {
                 ty = RobotType::BUILDER;
                 if rc.getActionCooldownTurns() == 0 && rc.getTeamLeadAmount(team) > ty.buildCostLead {
                     builderTurns = 50;
-                    rc.writeSharedArray(12, 0);
+                    ifdef FARM_LEAD {
+                        rc.writeSharedArray(12, 0);
+                    }
                 }
             }
         }
@@ -244,8 +250,67 @@ fn runArchon() throws GameActionException {
     }
 }
 
+fn builderMain() throws GameActionException {
+    let loc = rc.getLocation();
+    // Build watchtowers
+    // TODO better watchtower placement
+    let nWatchtowers = 0;
+    let archonDist = 1000;
+    let repairLoc: MapLocation = null;
+    let repairDist = 1000;
+    for i in Mem::nearbyRobotsMe {
+        if i.type == RobotType::WATCHTOWER {
+            nWatchtowers += 1;
+            if i.health != i.type.health {
+                let dist = i.location.distanceSquaredTo(loc);
+                if dist < repairDist {
+                    repairDist = dist;
+                    repairLoc = i.location;
+                }
+            }
+        } else if i.type == RobotType::ARCHON {
+            let dist = i.location.distanceSquaredTo(loc);
+            if dist < archonDist {
+                archonDist = dist;
+            }
+        }
+    }
+    if repairLoc != null {
+        if rc.canRepair(repairLoc) {
+            rc.repair(repairLoc);
+            return;
+        }
+        Paths::target = repairLoc;
+    } if nWatchtowers < 2 && archonDist > 13 {
+        // Watchtower building mode
+        let best_pass = 10000;
+        let best_dir: Direction = null;
+        for dir in directions {
+            let l = loc.add(dir);
+            if !rc.onTheMap(l) || rc.senseRobotAtLocation(l) != null {
+                continue;
+            }
+            let pass = rc.senseRubble(l);
+            if pass < best_pass {
+                best_pass = pass;
+                best_dir = dir;
+            }
+        }
+        if best_dir != null && rc.canBuildRobot(RobotType::WATCHTOWER, best_dir) {
+            rc.buildRobot(RobotType::WATCHTOWER, best_dir);
+        }
+    }
+    Paths::targetMove(true);
+}
+
+ifdef !FARM_LEAD
+fn runBuilder() throws GameActionException {
+    builderMain();
+}
+
 let sac = false;
 let builderStart = true;
+ifdef FARM_LEAD
 fn runBuilder() throws GameActionException {
     let loc = rc.getLocation();
     if builderStart {
@@ -267,54 +332,6 @@ fn runBuilder() throws GameActionException {
             Paths::targetMove(true);
         }
     } else {
-        // Build watchtowers
-        // TODO better watchtower placement
-        let nWatchtowers = 0;
-        let archonDist = 1000;
-        let repairLoc: MapLocation = null;
-        let repairDist = 1000;
-        for i in Mem::nearbyRobotsMe {
-            if i.type == RobotType::WATCHTOWER {
-                nWatchtowers += 1;
-                if i.health != i.type.health {
-                    let dist = i.location.distanceSquaredTo(loc);
-                    if dist < repairDist {
-                        repairDist = dist;
-                        repairLoc = i.location;
-                    }
-                }
-            } else if i.type == RobotType::ARCHON {
-                let dist = i.location.distanceSquaredTo(loc);
-                if dist < archonDist {
-                    archonDist = dist;
-                }
-            }
-        }
-        if repairLoc != null {
-            if rc.canRepair(repairLoc) {
-                rc.repair(repairLoc);
-                return;
-            }
-            Paths::target = repairLoc;
-        } if nWatchtowers < 2 && archonDist > 13 {
-            // Watchtower building mode
-            let best_pass = 10000;
-            let best_dir: Direction = null;
-            for dir in directions {
-                let l = loc.add(dir);
-                if !rc.onTheMap(l) || rc.senseRobotAtLocation(l) != null {
-                    continue;
-                }
-                let pass = rc.senseRubble(l);
-                if pass < best_pass {
-                    best_pass = pass;
-                    best_dir = dir;
-                }
-            }
-            if best_dir != null && rc.canBuildRobot(RobotType::WATCHTOWER, best_dir) {
-                rc.buildRobot(RobotType::WATCHTOWER, best_dir);
-            }
-        }
-        Paths::targetMove(true);
+        builderMain();
     }
 }

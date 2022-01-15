@@ -100,19 +100,19 @@ fn runMiner() throws GameActionException {
         if best_lead > 1 {
             Paths::target = best_loc;
         } 
-        else if best_lead == 1 && rc.getRoundNum() > 40 {
-            // If lead will regenerate, make sure there's a miner by it
-            let isMiner = false;
-            for i in Mem::nearbyRobotsMe {
-                if i.type == RobotType::MINER {
-                    isMiner = true;
-                    break;
-                }
-            }
-            if !isMiner {
-                Paths::target = best_loc;
-            }
-        }
+        // else if best_lead == 1 && rc.getRoundNum() > 40 {
+        //     // If lead will regenerate, make sure there's a miner by it
+        //     let isMiner = false;
+        //     for i in Mem::nearbyRobotsMe {
+        //         if i.type == RobotType::MINER {
+        //             isMiner = true;
+        //             break;
+        //         }
+        //     }
+        //     if !isMiner {
+        //         Paths::target = best_loc;
+        //     }
+        // }
     // }
     if rc.getRoundNum() != start_turn {
         println("Miner targeting overflowed bytecode by " + bytecodeNum() + " btc");
