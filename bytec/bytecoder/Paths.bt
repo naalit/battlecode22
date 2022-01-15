@@ -27,7 +27,7 @@ fn findArchon() {
 fn targetMoveGreedy(exploring: bool): bool throws GameActionException {
     let loc = rc.getLocation();
 
-    if (target == null || target == loc || (exploring && target == lastRetarget && loc.isAdjacentTo(target)) || (exploring && rc.canSenseLocation(target) && !rc.onTheMap(target))) {
+    if (target == null || target == loc || (exploring && target == lastRetarget && rc.canSenseLocation(target)) || (exploring && rc.canSenseLocation(target) && !rc.onTheMap(target))) {
         if exploring {
             retarget();
         } else {
@@ -313,7 +313,7 @@ let lastTarget: MapLocation = null;
 fn targetMove(exploring: bool): bool throws GameActionException {
     let loc = rc.getLocation();
 
-    if (target == null || target == loc || (exploring && target == lastRetarget && loc.isAdjacentTo(target)) || (exploring && rc.canSenseLocation(target) && !rc.onTheMap(target))) {
+    if (target == null || target == loc || (exploring && target == lastRetarget && rc.canSenseLocation(target)) || (exploring && rc.canSenseLocation(target) && !rc.onTheMap(target))) {
         if exploring {
             retarget();
         } else {
