@@ -1,5 +1,4 @@
 extern {
-    package bytecoder;
     import battlecode.common.*;
 }
 

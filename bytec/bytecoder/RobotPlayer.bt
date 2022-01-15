@@ -1,5 +1,4 @@
 extern {
-    package bytecoder;
     import battlecode.common.*;
 
     import java.util.Random;
@@ -16,7 +15,7 @@ extern class Random {
 
 let turnCount = 0;
 let rng = Random(12);
-let directions = [
+let directions: [Direction] = [
     Direction::NORTH,
     Direction::NORTHEAST,
     Direction::EAST,
@@ -58,7 +57,7 @@ let archonOrder = 0;
 let wasUnderAttack = false;
 let archonCount = 0;
 
-let toBuild = [RobotType::MINER, RobotType::SOLDIER];
+let toBuild: [RobotType] = [RobotType::MINER, RobotType::SOLDIER];
 let toBuildIdx = 0;
 let sacTurns = 0;
 let builderTurns = 0;
@@ -191,6 +190,7 @@ fn runArchon() throws GameActionException {
                     sacTurns = 30;
                     rc.writeSharedArray(12, 1);
                 }
+                // TODO what should these heuristics be?
             } else if rc.getTeamLeadAmount(team) >= 400 && builderTurns <= 0 {
                 ty = RobotType::BUILDER;
                 if rc.getActionCooldownTurns() == 0 && rc.getTeamLeadAmount(team) > ty.buildCostLead {
@@ -268,6 +268,7 @@ fn runBuilder() throws GameActionException {
         }
     } else {
         // Build watchtowers
+        // TODO better watchtower placement
         let nWatchtowers = 0;
         let archonDist = 1000;
         let repairLoc: MapLocation = null;

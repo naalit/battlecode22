@@ -1,5 +1,4 @@
 extern {
-    package bytecoder;
     import battlecode.common.*;
 }
 
@@ -7,6 +6,7 @@ extern fn clockYield() = "Clock.yield";
 extern fn bytecodeNum(): i32 = "Clock.getBytecodeNum";
 extern fn bytecodeLeft(): i32 = "Clock.getBytecodesLeft";
 
+extern fn max(a: i32, b: i32): i32 = "Math.max";
 extern fn abs(i: i32): i32 = "Math.abs";
 extern fn println(msg: str) = "System.out.println";
 
