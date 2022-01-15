@@ -224,7 +224,7 @@ extern class RobotController {
     // Return all locations that contain a nonzero amount of gold, within a specified radius of your robot location.
     fn senseNearbyLocationsWithGold(radiusSquared: i32): [MapLocation];
     // Return all locations that contain a nonzero amount of lead, within a specified radius of your robot location.
-    fn senseNearbyLocationsWithLead(radiusSquared: i32): [MapLocation];
+    fn senseNearbyLocationsWithLead(radiusSquared: i32, minLead: i32): [MapLocation];
     // Returns all robots within vision radius.
     fn senseNearbyRobots(): [RobotInfo];
     // Returns all robots that can be sensed within a certain distance of this robot.

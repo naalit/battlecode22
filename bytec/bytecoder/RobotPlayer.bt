@@ -80,7 +80,7 @@ fn runArchon() throws GameActionException {
     let miner_dir = Direction::SOUTH;
     let best_dist = 10000;
     let best_lead = 0;
-    let lead_locs = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared);
+    let lead_locs = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2);
     for l in lead_locs {
         let dist = l.distanceSquaredTo(rc.getLocation());
         if dist == 0 {

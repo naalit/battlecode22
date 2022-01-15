@@ -15,9 +15,7 @@ fn runMiner() throws GameActionException {
     //   d. Explore randomly
     // 3. Try to mine again if we moved
 
-    if tryMine() {
-        return;
-    }
+    let stay_loc = tryMine();
 
     // If there are enemy soldiers nearby, run away
     // Temporarily disabled because it's often harmful on small maps
@@ -37,6 +35,25 @@ fn runMiner() throws GameActionException {
         rc.setIndicatorLine(loc, closest_soldier, 255, 0, 0);
         let dirAway = closest_soldier.dirTo(loc);
         Paths::target = loc.add(dirAway).add(dirAway);
+        Paths::targetMove(false);
+    } else if stay_loc != null {
+        let best_pass = 10000;
+        let best_d = 10000;
+        let best_loc: MapLocation = null;
+        for dir in RobotPlayer::directions {
+            let l = stay_loc.add(dir);
+            if rc.canSenseLocation(l) && rc.onTheMap(l) {
+                let pass = rc.senseRubble(l);
+                let d = loc.distanceSquaredTo(l);
+                if pass < best_pass || (pass == best_pass && d < best_d) {
+                    d = best_d;
+                    best_pass = pass;
+                    best_loc = l;
+                }
+            }
+        }
+        Paths::target = best_loc;
+        Paths::targetMove(false);
     } else {
         // If we can see any metals, go mine them
         let best_lead = 0;
@@ -50,7 +67,7 @@ fn runMiner() throws GameActionException {
                 best_loc = l;
             }
         }
-        for l in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared) {
+        for l in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
             rc.setIndicatorLine(loc, l, 0, 0, 255);
             found_gold = true;
             let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
@@ -60,22 +77,19 @@ fn runMiner() throws GameActionException {
             }
         }
 
-        if best_lead > 1 {
+        if best_loc != null {
             Paths::target = best_loc;
-            rc.setIndicatorLine(loc, best_loc, 255, 255, 255);
-        } else {
-            rc.setIndicatorLine(loc, loc.add(Direction::NORTH), 0, 0, 0);
         }
+        Paths::targetMove(true);
     }
-    Paths::targetMove(true);
 
     tryMine();
 }
 
-// Returns whether we can continue mining this spot next turn
-fn tryMine(): bool throws GameActionException {
+// Returns whether we can continue mining an adjacent location
+fn tryMine(): MapLocation throws GameActionException {
     let at = rc.getLocation();
-    let some_left = false;
+    let some_left: MapLocation = null;
     for dir in RobotPlayer::directions {
         let loc = at.add(dir);
         while rc.canMineGold(loc) {
@@ -85,8 +99,8 @@ fn tryMine(): bool throws GameActionException {
         while rc.canMineLead(loc) && rc.senseLead(loc) > 1 {
             rc.mineLead(loc);
         }
-        if !some_left && rc.canSenseLocation(loc) && (rc.senseLead(loc) > 1 || rc.senseGold(loc) > 0) {
-            some_left = true;
+        if some_left == null && rc.canSenseLocation(loc) && (rc.senseLead(loc) > 1 || rc.senseGold(loc) > 0) {
+            some_left = loc;
         }
     }
     some_left
