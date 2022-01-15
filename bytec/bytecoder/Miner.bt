@@ -22,27 +22,25 @@ fn runMiner() throws GameActionException {
     // If there are enemy soldiers nearby, run away
     // Temporarily disabled because it's often harmful on small maps
     let loc = rc.getLocation();
-    // let closest_soldier: MapLocation = null;
-    // let closest_d = 1000;
-    // for i in Mem::nearbyRobotsThem {
-    //     if i.type == RobotType::SOLDIER {
-    //         let d = i.location.distanceSquaredTo(loc);
-    //         if d < closest_d {
-    //             closest_soldier = i.location;
-    //             closest_d = d;
-    //         }
-    //     }
-    // }
-    // if closest_soldier != null {
-    //     rc.setIndicatorLine(loc, closest_soldier, 255, 0, 0);
-    //     let dirAway = closest_soldier.dirTo(loc);
-    //     Paths::target = loc.add(dirAway).add(dirAway);
-    // } else {
+    let closest_soldier: MapLocation = null;
+    let closest_d = 1000;
+    for i in Mem::nearbyRobotsThem {
+        if i.type == RobotType::SOLDIER {
+            let d = i.location.distanceSquaredTo(loc);
+            if d < closest_d {
+                closest_soldier = i.location;
+                closest_d = d;
+            }
+        }
+    }
+    if closest_soldier != null {
+        rc.setIndicatorLine(loc, closest_soldier, 255, 0, 0);
+        let dirAway = closest_soldier.dirTo(loc);
+        Paths::target = loc.add(dirAway).add(dirAway);
+    } else {
         // If we can see any metals, go mine them
-        let start_turn = rc.getRoundNum();
         let best_lead = 0;
         let found_gold = false;
-        // let best_score = 10000;
         let best_loc: MapLocation = null;
         for l in rc.senseNearbyLocationsWithGold(rc.getType().visionRadiusSquared) {
             found_gold = true;
@@ -53,6 +51,7 @@ fn runMiner() throws GameActionException {
             }
         }
         for l in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared) {
+            rc.setIndicatorLine(loc, l, 0, 0, 255);
             found_gold = true;
             let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
             if lead > best_lead {
@@ -60,66 +59,15 @@ fn runMiner() throws GameActionException {
                 best_loc = l;
             }
         }
-        // TODO prioritize gold once we actually use it
-        // if !found_gold {
-        // let dirs: [Direction] = [Direction::NORTH, Direction::NORTH, Direction::NORTH];
-        // for l in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared) {
-        //     if bytecodeLeft() < 2000 {
-        //         // If there are that many locations with lead, it doesn't matter too much where we go anyway
-        //         break;
-        //     }
-        //     let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
-        //     if best_lead == 0 {
-        //         best_lead = lead;
-        //         best_loc = l;
-        //     }
-        //     let dist = loc.distanceSquaredTo(l);
-        //     if lead > 1 && dist <= best_score + 5 {
-        //         let pub dirTo = l.dirTo(loc);
-        //         dirs[0] = dirTo;
-        //         dirs[1] = dirTo.rotateLeft();
-        //         dirs[2] = dirTo.rotateRight();
-        //         for dir in dirs {
-        //             let l2 = l.add(dir);
-        //             if !rc.canSenseLocation(l2) || !rc.onTheMap(l2) {
-        //                 continue;
-        //             }
-        //             let dist = loc.distanceSquaredTo(l2);
-        //             let pass = rc.senseRubble(l2);
-        //             let score = dist + pass;
-        //             if score < best_score
-        //                 || (score == best_score && lead < best_lead) {
-        //                 best_lead = lead;
-        //                 best_loc = l2;
-        //                 best_score = score;
-        //             }
-        //         }
-        //     }
-        // }
 
         if best_lead > 1 {
             Paths::target = best_loc;
-        } 
-        // else if best_lead == 1 && rc.getRoundNum() > 40 {
-        //     // If lead will regenerate, make sure there's a miner by it
-        //     let isMiner = false;
-        //     for i in Mem::nearbyRobotsMe {
-        //         if i.type == RobotType::MINER {
-        //             isMiner = true;
-        //             break;
-        //         }
-        //     }
-        //     if !isMiner {
-        //         Paths::target = best_loc;
-        //     }
-        // }
-    // }
-    if rc.getRoundNum() != start_turn {
-        println("Miner targeting overflowed bytecode by " + bytecodeNum() + " btc");
+            rc.setIndicatorLine(loc, best_loc, 255, 255, 255);
+        } else {
+            rc.setIndicatorLine(loc, loc.add(Direction::NORTH), 0, 0, 0);
+        }
     }
-    if best_loc == null || loc != best_loc {
-        Paths::targetMove(true);
-    }
+    Paths::targetMove(true);
 
     tryMine();
 }
