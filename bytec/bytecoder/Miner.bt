@@ -31,24 +31,42 @@ fn runMiner() throws GameActionException {
             }
         }
     }
+
     if closest_soldier != null {
         rc.setIndicatorLine(loc, closest_soldier, 255, 0, 0);
-        let dirAway = closest_soldier.dirTo(loc);
-        Paths::target = loc.add(dirAway).add(dirAway);
-        Paths::targetMove(false);
-    } else if stay_loc != null {
+    }
+
+    if stay_loc != null {
         let best_pass = 10000;
         let best_d = 10000;
         let best_loc: MapLocation = null;
-        for dir in RobotPlayer::directions {
-            let l = stay_loc.add(dir);
-            if rc.canSenseLocation(l) && rc.onTheMap(l) {
-                let pass = rc.senseRubble(l);
-                let d = loc.distanceSquaredTo(l);
-                if pass < best_pass || (pass == best_pass && d < best_d) {
-                    d = best_d;
-                    best_pass = pass;
-                    best_loc = l;
+        if closest_soldier == null {
+            for dir in RobotPlayer::directions {
+                let l = stay_loc.add(dir);
+                if rc.canSenseLocation(l) && rc.onTheMap(l) {
+                    let pass = rc.senseRubble(l);
+                    let d = loc.distanceSquaredTo(l);
+                    if pass < best_pass || (pass == best_pass && d < best_d) {
+                        d = best_d;
+                        best_pass = pass;
+                        best_loc = l;
+                    }
+                }
+            }
+        } else {
+            let best_sd = 0;
+            for dir in RobotPlayer::directions {
+                let l = stay_loc.add(dir);
+                if rc.canSenseLocation(l) && rc.onTheMap(l) {
+                    let pass = rc.senseRubble(l);
+                    let d = loc.distanceSquaredTo(l);
+                    let sd = closest_soldier.distanceSquaredTo(l);
+                    if (sd > 13 || sd > best_sd) && (pass < best_pass || (pass == best_pass && d < best_d)) {
+                        d = best_d;
+                        best_sd = sd;
+                        best_pass = pass;
+                        best_loc = l;
+                    }
                 }
             }
         }
@@ -58,11 +76,14 @@ fn runMiner() throws GameActionException {
         // If we can see any metals, go mine them
         let best_lead = 0;
         let found_gold = false;
+        let best_sd = 0;
         let best_loc: MapLocation = null;
         for l in rc.senseNearbyLocationsWithGold(rc.getType().visionRadiusSquared) {
             found_gold = true;
             let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
-            if lead > best_lead {
+            let sd = if closest_soldier != null { closest_soldier.distanceSquaredTo(l) } else { 15 };
+            if (sd > 13 || sd > best_sd) && lead > best_lead {
+                best_sd = sd;
                 best_lead = lead;
                 best_loc = l;
             }
@@ -71,7 +92,9 @@ fn runMiner() throws GameActionException {
             rc.setIndicatorLine(loc, l, 0, 0, 255);
             found_gold = true;
             let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
-            if lead > best_lead {
+            let sd = if closest_soldier != null { closest_soldier.distanceSquaredTo(l) } else { 15 };
+            if (sd > 13 || sd > best_sd) && lead > best_lead {
+                best_sd = sd;
                 best_lead = lead;
                 best_loc = l;
             }
@@ -79,6 +102,9 @@ fn runMiner() throws GameActionException {
 
         if best_loc != null {
             Paths::target = best_loc;
+        } else if closest_soldier != null {
+            let dirAway = closest_soldier.dirTo(loc);
+            Paths::target = loc.add(dirAway).add(dirAway);
         }
         Paths::targetMove(true);
     }
