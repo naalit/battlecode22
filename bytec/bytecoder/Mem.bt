@@ -21,6 +21,10 @@ fn maintain() throws GameActionException {
     nearbyRobotsMe = rc.senseNearbyRobotsT(visRadius, rc.getTeam());
     nearbyRobotsThem = rc.senseNearbyRobotsT(visRadius, rc.getTeam().opponent());
 
+    // if rc.getType() == RobotType::ARCHON || rc.getType() == RobotType::SOLDIER {
+        updateSoldiers();
+    // }
+
     readCmds();
 
     readArchons();
@@ -41,15 +45,28 @@ fn maintain() throws GameActionException {
 fn encodeLoc(loc: MapLocation): i32 = (loc.y << 6) | loc.x;
 fn decodeLoc(x: i32): MapLocation = MapLocation(x & 0b111111, (x >> 6) & 0b111111);
 
+// 0-??: enemy archon list
+// ??-11:
+// 12: lead farming marker for builders (not used currently)
+// 13: reports last archon under attack
+// 14: friendly archon order finding
+// 15: number of available soldiers
+// 16-23: command queue 1
+// 24-31: command queue 2
+// 32-47: enemy soldiers
+// 48-63:
 let ARCHON_LOC = 0;
 let CMD_LOC = 16;
+let CMD_LEN = 8;
+let ENEMY_LOC = 32;
+let ENEMY_LEN = 16;
 // There are two command queues that we switch between
 // This is so that Archons can read messages sent last turn by other Archons later in the order
 fn cmdLoc(): i32 throws GameActionException {
-    CMD_LOC + 16 * (rc.getRoundNum() % 2)
+    CMD_LOC + CMD_LEN * (rc.getRoundNum() % 2)
 }
 fn cmdLocOther(): i32 throws GameActionException {
-    CMD_LOC + 16 * ((rc.getRoundNum() + 1) % 2)
+    CMD_LOC + CMD_LEN * ((rc.getRoundNum() + 1) % 2)
 }
 let AVAILABLE_SOLDIERS = 15;
 
@@ -61,6 +78,127 @@ fn clearAvailableSoldiers() throws GameActionException {
 }
 fn addAvailableSoldier() throws GameActionException {
     rc.writeSharedArray(AVAILABLE_SOLDIERS, rc.readSharedArray(AVAILABLE_SOLDIERS) + 1);
+}
+
+// (x, y, last_seen_turn)
+// soldiers expire after a few turns
+// this actually considers watchtowers and sages too
+
+// define SOLDIER_EXPIRE_TURNS = 1;
+
+let soldierList: [(MapLocation, i32)] = [];
+let soldierIdxs: [i32];
+let closestSoldier: MapLocation = null;
+let toAdd: [MapLocation] = [];
+ifdef SOLDIER_EXPIRE_TURNS
+fn inline addSoldier(loc: MapLocation, width: i32, round: i32, found: bool) {
+    let x = loc.x;
+    let y = loc.y;
+    let idx = soldierIdxs[y*width + x] - 1;
+    if idx >= 0 {
+        soldierList[idx] = (loc, round);
+    } else {
+        soldierIdxs[y*width + x] = soldierList.len();
+        soldierList.push((loc, round));
+        if found {
+            if toAdd.len() < 4 {
+                toAdd.push(loc);
+            }
+        }
+    }
+}
+ifdef !SOLDIER_EXPIRE_TURNS
+fn inline addSoldier(loc: MapLocation, width: i32, round: i32, found: bool) {
+    soldierList.push((loc, round));
+    if found {
+        if toAdd.len() < 4 {
+            toAdd.push(loc);
+        }
+    }
+}
+fn updateSoldiers() throws GameActionException {
+    let at = rc.getLocation();
+    soldierList.clear();
+
+    if soldierIdxs.len() == 0 {
+        soldierIdxs = [; rc.getMapWidth() * rc.getMapHeight()];
+    }
+    let width = rc.getMapWidth();
+    let round = rc.getRoundNum();
+    let doSend = round % 2 == 0;
+    if !doSend {
+        toAdd.clear();
+        if rc.getType() == RobotType::ARCHON && RobotPlayer::archonOrder == 0 {
+            for i in ENEMY_LOC..(ENEMY_LOC+ENEMY_LEN) {
+                let r = rc.readSharedArray(i);
+                if r == 0 {
+                    break;
+                } else {
+                    rc.writeSharedArray(i, 0);
+                }
+            }
+        }
+    }
+    // Add new soldiers we can see
+    for i in nearbyRobotsThem {
+        if i.type.damage > 0 {
+            addSoldier(i.location, width, round, true);
+        }
+    }
+    // Add new soldiers from comms
+    let sLen = 0;
+    for i in ENEMY_LOC..(ENEMY_LOC+ENEMY_LEN) {
+        let r = rc.readSharedArray(i);
+        if r == 0 {
+            break;
+        } else {
+            sLen += 1;
+            addSoldier(decodeLoc(r - 1), width, round, false);
+        }
+    }
+
+    // Remove old soldiers
+    closestSoldier = null;
+    let closestD = 100000;
+    ifdef !SOLDIER_EXPIRE_TURNS
+    for i in soldierList {
+        let d = at.distanceSquaredTo(i.0);
+            if d < closestD {
+                closestSoldier = i.0;
+                closestD = d;
+            }
+    }
+    ifdef SOLDIER_EXPIRE_TURNS {
+        let i = 0;
+        let minRound = round - SOLDIER_EXPIRE_TURNS;
+        while i < soldierList.len() {
+            if soldierList[i].1 < minRound {
+                let loc = soldierList[i].0;
+                soldierIdxs[loc.y*width + loc.x] = 0;
+                if i == soldierList.len() - 1 {
+                    let _ = soldierList.pop();
+                } else {
+                    // soldierList.swap_remove(i);
+                    soldierList[i] = soldierList.pop();
+                }
+            } else {
+                let d = at.distanceSquaredTo(soldierList[i].0);
+                if d < closestD {
+                    closestSoldier = soldierList[i].0;
+                    closestD = d;
+                }
+                i += 1;
+            }
+        }
+    }
+
+    if doSend {
+        while sLen < ENEMY_LEN && toAdd.len() > 0 {
+            let loc = toAdd.pop();
+            rc.writeSharedArray(ENEMY_LOC + sLen, encodeLoc(loc) + 1);
+            sLen += 1;
+        }
+    }
 }
 
 enum Cmd {
@@ -102,7 +240,7 @@ fn pushCmd(cmd: Cmd) throws GameActionException {
     while rc.readSharedArray(i) != 0 {
         i += 1;
     }
-    if i > cmdLoc() + 16 {
+    if i >= cmdLoc() + CMD_LEN {
         println("Warning: Too many commands, skipping " + cmd.toString());
         return;
     }
@@ -115,7 +253,7 @@ fn readCmds() throws GameActionException {
     let i = cmdLoc();
     loop {
         let cmdi = rc.readSharedArray(i);
-        if cmdi == 0 || i > cmdLoc() + 16 {
+        if cmdi == 0 || i > cmdLoc() + CMD_LEN {
             break;
         }
         let cmd = decodeCmd(cmdi);
@@ -131,7 +269,7 @@ fn readCmds() throws GameActionException {
         let i = cmdLocOther();
         loop {
             let cmdi = rc.readSharedArray(i);
-            if cmdi == 0 || i > cmdLocOther() + 16 {
+            if cmdi == 0 || i > cmdLocOther() + CMD_LEN {
                 break;
             }
             let cmd = decodeCmd(cmdi);

@@ -230,7 +230,7 @@ fn inline doLoc(x: i32, y: i32) throws GameActionException {
                 if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 <= maxD && y2*y2 <= maxD) {
                     let i = (4 + x2) * 9 + 4 + y2;
                     // let score = cache[i].0 + baseRubble;
-                    if cache[i].0 + baseRubble < oldScore {
+                    if cache[i].0 + baseRubble < cache[baseIdx].0 {
                         // rc.setIndicatorLine(loc, loc.translate(dx, dy), 0, 0, 127);
                         cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
                     }

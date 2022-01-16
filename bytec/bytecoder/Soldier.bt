@@ -80,6 +80,7 @@ fn runWatchtower() throws GameActionException {
 }
 
 let lastProtect: MapLocation = null;
+let lastSoldier: MapLocation = null;
 fn runSoldier() throws GameActionException {
     let loc = rc.getLocation();
 
@@ -215,8 +216,16 @@ fn runSoldier() throws GameActionException {
         if available {
             Mem::addAvailableSoldier();
         }
+        if rc.getHealth() > 20 && Mem::closestSoldier != null && (Paths::target == null || Paths::target == lastSoldier || Paths::target == Paths::lastRetarget) {
+            Paths::target = Mem::closestSoldier;
+            lastSoldier = Mem::closestSoldier;
+        }
     } else {
         Mem::addAvailableSoldier();
+        if rc.getHealth() > 20 && Mem::closestSoldier != null && (Paths::target == null || Paths::target == lastSoldier || Paths::target == Paths::lastRetarget) {
+            Paths::target = Mem::closestSoldier;
+            lastSoldier = Mem::closestSoldier;
+        }
     }
     if !protectStill && lastProtect != null {
         if lastProtect == Paths::target {

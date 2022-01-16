@@ -1,0 +1,28 @@
+#!/usr/bin/fish
+
+bytec bytec/bytecoder src/bytecoder
+./gradlew build > /dev/null
+
+set -l MAPS (./gradlew listMaps | grep 'MAP: ' | sed 's/MAP: //g')
+
+function cleanup_jobs -s SIGINT
+    for i in jobs -p
+        kill $i
+    end
+    echo 'done'
+end
+
+set iters 0
+for m in $MAPS
+    bash -c "./gradlew run -PteamA=bytecoder -PteamB=bytecoder4 -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
+    bash -c "./gradlew run -PteamA=bytecoder4 -PteamB=bytecoder -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
+    set iters (math $iters + 1)
+    if test $iters -gt 2
+        while jobs -q
+            sleep 1
+        end
+        set iters 0
+    end
+end
+
+cleanup_jobs

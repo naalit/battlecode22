@@ -18,18 +18,10 @@ fn runMiner() throws GameActionException {
     let stay_loc = tryMine();
 
     // If there are enemy soldiers nearby, run away
-    // Temporarily disabled because it's often harmful on small maps
     let loc = rc.getLocation();
-    let closest_soldier: MapLocation = null;
-    let closest_d = 1000;
-    for i in Mem::nearbyRobotsThem {
-        if i.type == RobotType::SOLDIER {
-            let d = i.location.distanceSquaredTo(loc);
-            if d < closest_d {
-                closest_soldier = i.location;
-                closest_d = d;
-            }
-        }
+    let closest_soldier: MapLocation = Mem::closestSoldier;
+    if closest_soldier != null && !closest_soldier.isWithinDistanceSquared(loc, 20) {
+        closest_soldier = null;
     }
 
     if closest_soldier != null {
