@@ -3,10 +3,14 @@
 bytec bytec/bytecoder src/bytecoder
 ./gradlew build > /dev/null
 
-set -l MAPS (./gradlew listMaps | grep 'MAP: ' | sed 's/MAP: //g')
+if test (count $argv) -eq 0
+    set MAPS (./gradlew listMaps | grep 'MAP: ' | sed 's/MAP: //g')
+else
+    set MAPS $argv
+end
 
 function cleanup_jobs -s SIGINT
-    for i in jobs -p
+    for i in (jobs -p)
         kill $i
     end
     echo 'done'
@@ -25,4 +29,6 @@ for m in $MAPS
     end
 end
 
-cleanup_jobs
+while jobs -q
+    sleep 1
+end

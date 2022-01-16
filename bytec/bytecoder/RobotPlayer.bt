@@ -57,8 +57,6 @@ let archonOrder = 0;
 let wasUnderAttack = false;
 let archonCount = 0;
 
-let toBuild: [RobotType] = [RobotType::MINER, RobotType::SOLDIER];
-let toBuildIdx = 0;
 let sacTurns = 0;
 let builderTurns = 0;
 
@@ -115,8 +113,10 @@ fn runArchon() throws GameActionException {
             }
         }
         let availableSoldiers = Mem::getAvailableSoldiers();
+        let totalMiners = Mem::getMinerCount();
         if archonOrder == rc.getArchonCount() - 1 {
             Mem::clearAvailableSoldiers();
+            Mem::clearMinerCount();
         }
         // Make sure the attack target still exists
         if attacking != null {
@@ -135,14 +135,7 @@ fn runArchon() throws GameActionException {
             }
         }
 
-        // let numMiners = 0;
-        // for i in Mem::nearbyRobotsMe {
-        //     if i.type == RobotType::MINER {
-        //         numMiners += 1;
-        //     }
-        // }
         let nLead = lead_locs.len();
-        // if nLead < 2 { nLead = 2 }
         let nearbyEnemies = 0;
         for i in Mem::nearbyRobotsThem {
             if i.type.damage > 0 {
@@ -150,15 +143,19 @@ fn runArchon() throws GameActionException {
             }
         }
         let nearbyDefenders = 0;
+        let nearbyMiners = 0;
         for i in Mem::nearbyRobotsMe {
             if i.type.damage > 0 {
                 nearbyDefenders += 1;
+            } else if i.type == RobotType::MINER {
+                nearbyMiners += 1;
             }
         }
+        let targetMinerCount = (nLead - 1) * rc.getArchonCount(); // + (rc.getMapWidth() + rc.getMapHeight())/10;
 
         let otherUnderAttack = rc.readSharedArray(13);
 
-        let underAttack = nearbyEnemies > nearbyDefenders;// || nearbyDefenders == 0;
+        let underAttack = nearbyEnemies > nearbyDefenders;
         if underAttack && !wasUnderAttack {
             rc.writeSharedArray(13, archonOrder + 1);
         } else if wasUnderAttack && !underAttack && otherUnderAttack - 1 == archonOrder {
@@ -169,8 +166,11 @@ fn runArchon() throws GameActionException {
         }
         wasUnderAttack = underAttack;
 
-        // rc.setIndicatorString("14: " + rc.readSharedArray(14) + ", 13: " + rc.readSharedArray(13));
-        let ty = toBuild[toBuildIdx];
+        let ty = if totalMiners < targetMinerCount && (rc.getRoundNum() < 50 || availableSoldiers > totalMiners || nearbyEnemies == 0) {
+            RobotType::MINER
+        } else {
+            RobotType::SOLDIER
+        };
         if underAttack {
             ty = RobotType::SOLDIER;
             rc.setIndicatorString("[V] Under attack!");
@@ -222,18 +222,16 @@ fn runArchon() throws GameActionException {
         let turn = rc.getRoundNum() % rc.getArchonCount();
         // let roundsUntilOurs = if turn <= archonOrder { archonOrder - turn } else { archonOrder - turn + rc.getArchonCount() };
         if turn == archonOrder
-            || rc.getTeamLeadAmount(team) > ty.buildCostLead + RobotType::SOLDIER.buildCostLead * (rc.getArchonCount() - archonOrder - 1) {
+            || rc.getTeamLeadAmount(team) >= ty.buildCostLead + RobotType::MINER.buildCostLead * (rc.getArchonCount() - archonOrder - 1) {
         // if underAttack || otherUnderAttack == 0 {
             if ty == RobotType::MINER && best_lead > 1 {
                 if rc.canBuildRobot(ty, miner_dir) {
                     rc.buildRobot(ty, miner_dir);
-                    toBuildIdx = (toBuildIdx + 1) % toBuild.len();
                 }
             }
             for dir in directions {
                 if rc.canBuildRobot(ty, dir) {
                     rc.buildRobot(ty, dir);
-                    toBuildIdx = (toBuildIdx + 1) % toBuild.len();
                     break;
                 }
             }

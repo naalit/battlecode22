@@ -8,6 +8,7 @@ use RobotPlayer::rc;
 // Cache these, 200 bytecode is better than splitting it manually but we definitely don't want to do it twice
 let nearbyRobotsMe: [RobotInfo] = [];
 let nearbyRobotsThem: [RobotInfo] = [];
+let seenEnemies = false;
 
 // Run this once a turn, before doing other things.
 // It caches nearby robots, communicates stuff it found, etc.
@@ -20,6 +21,14 @@ fn maintain() throws GameActionException {
     let visRadius = rc.getType().visionRadiusSquared;
     nearbyRobotsMe = rc.senseNearbyRobotsT(visRadius, rc.getTeam());
     nearbyRobotsThem = rc.senseNearbyRobotsT(visRadius, rc.getTeam().opponent());
+
+    if !seenEnemies {
+        seenEnemies = rc.readSharedArray(SEEN_ENEMIES_LOC) != 0;
+        if !seenEnemies && nearbyRobotsThem.len() > 0 {
+            seenEnemies = true;
+            rc.writeSharedArray(SEEN_ENEMIES_LOC, 1);
+        }
+    }
 
     // if rc.getType() == RobotType::ARCHON || rc.getType() == RobotType::SOLDIER {
         updateSoldiers();
@@ -46,7 +55,9 @@ fn encodeLoc(loc: MapLocation): i32 = (loc.y << 6) | loc.x;
 fn decodeLoc(x: i32): MapLocation = MapLocation(x & 0b111111, (x >> 6) & 0b111111);
 
 // 0-??: enemy archon list
-// ??-11:
+// ??-9:
+// 10: total number of miners
+// 11: seen enemies yet
 // 12: lead farming marker for builders (not used currently)
 // 13: reports last archon under attack
 // 14: friendly archon order finding
@@ -58,6 +69,7 @@ fn decodeLoc(x: i32): MapLocation = MapLocation(x & 0b111111, (x >> 6) & 0b11111
 let ARCHON_LOC = 0;
 let CMD_LOC = 16;
 let CMD_LEN = 8;
+let SEEN_ENEMIES_LOC = 11;
 let ENEMY_LOC = 32;
 let ENEMY_LEN = 16;
 // There are two command queues that we switch between
@@ -69,7 +81,6 @@ fn cmdLocOther(): i32 throws GameActionException {
     CMD_LOC + CMD_LEN * ((rc.getRoundNum() + 1) % 2)
 }
 let AVAILABLE_SOLDIERS = 15;
-
 fn getAvailableSoldiers(): i32 throws GameActionException {
     rc.readSharedArray(AVAILABLE_SOLDIERS)
 }
@@ -78,6 +89,16 @@ fn clearAvailableSoldiers() throws GameActionException {
 }
 fn addAvailableSoldier() throws GameActionException {
     rc.writeSharedArray(AVAILABLE_SOLDIERS, rc.readSharedArray(AVAILABLE_SOLDIERS) + 1);
+}
+let MINER_COUNT_LOC = 15;
+fn getMinerCount(): i32 throws GameActionException {
+    rc.readSharedArray(MINER_COUNT_LOC)
+}
+fn clearMinerCount() throws GameActionException {
+    rc.writeSharedArray(MINER_COUNT_LOC, 0);
+}
+fn addMinerCount() throws GameActionException {
+    rc.writeSharedArray(MINER_COUNT_LOC, rc.readSharedArray(AVAILABLE_SOLDIERS) + 1);
 }
 
 // (x, y, last_seen_turn)

@@ -15,6 +15,8 @@ fn runMiner() throws GameActionException {
     //   d. Explore randomly
     // 3. Try to mine again if we moved
 
+    Mem::addMinerCount();
+
     let stay_loc = tryMine();
 
     // If there are enemy soldiers nearby, run away
@@ -74,8 +76,8 @@ fn runMiner() throws GameActionException {
             found_gold = true;
             let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
             let sd = if closest_soldier != null { closest_soldier.distanceSquaredTo(l) } else { 15 };
-            if (sd > 13 || sd > best_sd) && lead > best_lead {
-                best_sd = sd;
+            if (sd > 13) && lead > best_lead {
+                // best_sd = sd;
                 best_lead = lead;
                 best_loc = l;
             }
@@ -85,8 +87,8 @@ fn runMiner() throws GameActionException {
             found_gold = true;
             let lead = rc.senseLead(l) + rc.senseGold(l) * 50;
             let sd = if closest_soldier != null { closest_soldier.distanceSquaredTo(l) } else { 15 };
-            if (sd > 13 || sd > best_sd) && lead > best_lead {
-                best_sd = sd;
+            if (sd > 13) && lead > best_lead {
+                // best_sd = sd;
                 best_lead = lead;
                 best_loc = l;
             }
