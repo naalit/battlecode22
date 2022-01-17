@@ -108,7 +108,10 @@ fn addMinerCount() throws GameActionException {
 // define SOLDIER_EXPIRE_TURNS = 1;
 
 let soldierList: [(MapLocation, i32)] = [];
+
+ifdef SOLDIER_EXPIRE_TURNS
 let soldierIdxs: [i32];
+
 let closestSoldier: MapLocation = null;
 let toAdd: [MapLocation] = [];
 ifdef SOLDIER_EXPIRE_TURNS
@@ -141,9 +144,11 @@ fn updateSoldiers() throws GameActionException {
     let at = rc.getLocation();
     soldierList.clear();
 
+    ifdef SOLDIER_EXPIRE_TURNS
     if soldierIdxs.len() == 0 {
         soldierIdxs = [; rc.getMapWidth() * rc.getMapHeight()];
     }
+
     let width = rc.getMapWidth();
     let round = rc.getRoundNum();
     let doSend = round % 2 == 0;
