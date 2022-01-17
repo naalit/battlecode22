@@ -18,14 +18,16 @@ end
 
 set iters 0
 for m in $MAPS
-    bash -c "./gradlew run -PteamA=bytecoder -PteamB=bytecoder4 -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
-    bash -c "./gradlew run -PteamA=bytecoder4 -PteamB=bytecoder -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
-    set iters (math $iters + 1)
-    if test $iters -gt 2
-        while jobs -q
-            sleep 1
+    if [ $m != "maptestsmall" ]
+        bash -c "./gradlew run -PteamA=bytecoder -PteamB=bytecoder3 -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
+        bash -c "./gradlew run -PteamA=bytecoder3 -PteamB=bytecoder -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
+        set iters (math $iters + 1)
+        if test $iters -gt 2
+            while jobs -q
+                sleep 1
+            end
+            set iters 0
         end
-        set iters 0
     end
 end
 

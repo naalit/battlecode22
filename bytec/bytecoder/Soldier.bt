@@ -8,7 +8,6 @@ use RobotPlayer::rc;
 // We generally try defend this archon
 // There is usually only one in range so we only bother with one
 let closestArchon: RobotInfo;
-let nearbyEnemyHP = 0;
 
 let protectTurns = 20;
 fn attackTarget(): (RobotInfo, RobotInfo) {
@@ -21,11 +20,6 @@ fn attackTarget(): (RobotInfo, RobotInfo) {
     for bot in Mem::nearbyRobotsThem {
         let isNear = bot.location.isWithinDistanceSquared(loc, radius);
         let ref = if isNear { near } else { far };
-        // Includes soldiers, sages, and watchtowers
-        if bot.type.damage > 0 {
-            protectTurns = 20;
-            nearbyEnemyHP += bot.health;
-        }
 
         if unitBetter(ref, bot) {
             if isNear {
@@ -57,11 +51,13 @@ class LocInfo {
     let enemyDamage: i32;
     let rubble: i32;
     let bestEnemy: RobotInfo;
+    let distToEnemy: i32;
 
     fn init(loc: MapLocation) throws GameActionException {
         self.loc = loc;
         self.rubble = rc.senseRubble(loc);
         self.enemyDamage = 0;
+        self.distToEnemy = 100000;
     }
 }
 fn unitBetter(old: RobotInfo, new: RobotInfo): bool {
@@ -131,7 +127,13 @@ fn locBetter(old: LocInfo, new: LocInfo): bool {
                 if new.bestEnemy != null && unitBetter(old.bestEnemy, new.bestEnemy) {
                     true
                 } else if old.bestEnemy == null || !unitBetter(new.bestEnemy, old.bestEnemy) {
-                    new.rubble < old.rubble
+                    if new.rubble < old.rubble {
+                        true
+                    } else if nearbyFriendlyHP >= nearbyEnemyHP {
+                        new.distToEnemy < old.distToEnemy
+                    } else {
+                        new.distToEnemy > old.distToEnemy
+                    }
                 }
             } else {
                 false
@@ -152,6 +154,7 @@ fn inline updateLoc(loc: LocInfo, unit: RobotInfo) {
         if d <= actionRadius {
             if unitBetter(loc.bestEnemy, unit) {
                 loc.bestEnemy = unit;
+                loc.distToEnemy = d;
             }
         }
     }
@@ -159,6 +162,8 @@ fn inline updateLoc(loc: LocInfo, unit: RobotInfo) {
 
 let at: MapLocation;
 let actionRadius: i32;
+let nearbyFriendlyHP: i32;
+let nearbyEnemyHP: i32;
 fn doMicro() throws GameActionException {
     at = rc.getLocation();
     actionRadius = rc.getType().actionRadiusSquared;
@@ -177,11 +182,28 @@ fn doMicro() throws GameActionException {
             }
         }
     }
+    nearbyEnemyHP = 0;
     for bot in Mem::nearbyRobotsThem {
+        if bot.type.damage > 0 {
+            protectTurns = 20;
+            nearbyEnemyHP += bot.health;
+        }
         for loc in locs {
             updateLoc(loc, bot);
         }
     }
+    closestArchon = null;
+    nearbyFriendlyHP = rc.getHealth();
+    for i in Mem::nearbyRobotsMe {
+        if i.type == RobotType::ARCHON {
+            if closestArchon == null || i.location.isWithinDistanceSquared(at, closestArchon.location.distanceSquaredTo(at)) {
+                closestArchon = i;
+            }
+        } else if i.type.damage > 0 {
+            nearbyFriendlyHP += i.health;
+        }
+    }
+
     let best: LocInfo = null;
     for loc in locs {
         if loc != null {
@@ -214,17 +236,17 @@ let lastSoldier: MapLocation = null;
 fn runSoldier() throws GameActionException {
     let loc = rc.getLocation();
 
-    closestArchon = null;
-    let nearbyFriendlyHP = rc.getHealth();
-    for i in Mem::nearbyRobotsMe {
-        if i.type == RobotType::ARCHON {
-            if closestArchon == null || i.location.isWithinDistanceSquared(loc, closestArchon.location.distanceSquaredTo(loc)) {
-                closestArchon = i;
-            }
-        } else if i.type.damage > 0 {
-            nearbyFriendlyHP += i.health;
-        }
-    }
+    // closestArchon = null;
+    // let nearbyFriendlyHP = rc.getHealth();
+    // for i in Mem::nearbyRobotsMe {
+    //     if i.type == RobotType::ARCHON {
+    //         if closestArchon == null || i.location.isWithinDistanceSquared(loc, closestArchon.location.distanceSquaredTo(loc)) {
+    //             closestArchon = i;
+    //         }
+    //     } else if i.type.damage > 0 {
+    //         nearbyFriendlyHP += i.health;
+    //     }
+    // }
 
     // Move
     // Defend our Archon if we're not in very early game and we've seen enemies recently
