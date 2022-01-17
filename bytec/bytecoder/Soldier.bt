@@ -27,34 +27,7 @@ fn attackTarget(): (RobotInfo, RobotInfo) {
             nearbyEnemyHP += bot.health;
         }
 
-        // Targeting priority:
-        fn priority(ty: RobotType): i32 = match ty {
-            // Sages are valuable and dangerous, kill on sight
-            SAGE => 7,
-            // The most immediate threat, if we don't kill them they'll kill us
-            SOLDIER => 6,
-            // We'll need to kill these to take out a watchtower
-            // probably should have special-case code for actually seeing a watchtower though
-            BUILDER => 5,
-            // Another threat
-            WATCHTOWER => 4,
-            // We probably won't take out an Archon anytime soon with Soldiers, but doing damage on it is good
-            // Really these last three are TBD though
-            ARCHON => 3,
-            MINER => 2,
-            LABORATORY => 1,
-        };
-
-        let better =
-                ref == null
-            ||  priority(bot.type) > priority(ref.type)
-            // Pick the lowest hp to kill more units more quickly, which is better than just doing damage
-            ||  bot.health < ref.health
-            // Target the one closest to the Archon if there is one
-            ||  (closestArchon != null && bot.location.isWithinDistanceSquared(closestArchon.location, closestArchon.location.distanceSquaredTo(ref.location)))
-            // Otherwise just pick the closest one
-            ||  bot.location.isWithinDistanceSquared(loc, loc.distanceSquaredTo(ref.location));
-        if better {
+        if unitBetter(ref, bot) {
             if isNear {
                 near = bot;
             } else {
@@ -79,6 +52,163 @@ fn runWatchtower() throws GameActionException {
     }
 }
 
+class LocInfo {
+    let loc: MapLocation;
+    let enemyDamage: i32;
+    let rubble: i32;
+    let bestEnemy: RobotInfo;
+
+    fn init(loc: MapLocation) throws GameActionException {
+        self.loc = loc;
+        self.rubble = rc.senseRubble(loc);
+        self.enemyDamage = 0;
+    }
+}
+fn unitBetter(old: RobotInfo, new: RobotInfo): bool {
+    // Targeting priority:
+    fn inline priority(ty: RobotType): i32 = match ty {
+        // Sages are valuable and dangerous, kill on sight
+        SAGE => 7,
+        // The most immediate threat, if we don't kill them they'll kill us
+        SOLDIER => 6,
+        // We'll need to kill these to take out a watchtower
+        // probably should have special-case code for actually seeing a watchtower though
+        BUILDER => 5,
+        // Another threat
+        WATCHTOWER => 4,
+        // We probably won't take out an Archon anytime soon with Soldiers, but doing damage on it is good
+        // Really these last three are TBD though
+        ARCHON => 3,
+        MINER => 2,
+        LABORATORY => 1,
+    };
+
+    if old == null {
+        true
+    } else if priority(new.type) > priority(old.type) {
+        true
+    } else if priority(new.type) == priority(old.type) {
+        // Pick the lowest hp to kill more units more quickly, which is better than just doing damage
+        if new.health < old.health {
+            true
+        } else if new.health == old.health {
+            // Target the one closest to the Archon if there is one
+            if closestArchon != null && new.location.isWithinDistanceSquared(closestArchon.location, closestArchon.location.distanceSquaredTo(old.location)) {
+                // Otherwise just pick the closest one
+                if closestArchon != null {
+                    new.location.isWithinDistanceSquared(at, at.distanceSquaredTo(old.location))
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+fn locBetter(old: LocInfo, new: LocInfo): bool {
+    if old == null {
+        true
+    } else if new.rubble <= old.rubble - 20 {
+        true
+    } else if new.rubble <= old.rubble {
+        if  new.enemyDamage <= 3 && 
+            new.bestEnemy != null && 
+            new.bestEnemy.health <= rc.getHealth() && 
+            unitBetter(old.bestEnemy, new.bestEnemy)
+            {
+            true
+        } else if new.enemyDamage < old.enemyDamage {
+            true
+        } else if new.enemyDamage == old.enemyDamage {
+            if new.rubble < old.rubble && new.enemyDamage > 0 {
+                true
+            } else if new.rubble <= old.rubble {
+                if new.bestEnemy != null && unitBetter(old.bestEnemy, new.bestEnemy) {
+                    true
+                } else if old.bestEnemy == null || !unitBetter(new.bestEnemy, old.bestEnemy) {
+                    new.rubble < old.rubble
+                }
+            } else {
+                false
+            }
+        } else {
+                false
+            }
+    } else {
+        false
+    }
+}
+fn inline updateLoc(loc: LocInfo, unit: RobotInfo) {
+    if loc != null {
+        let d = loc.loc.distanceSquaredTo(unit.location);
+        if unit.type.damage > 0 && d <= unit.type.actionRadiusSquared {
+            loc.enemyDamage += unit.type.damage;
+        }
+        if d <= actionRadius {
+            if unitBetter(loc.bestEnemy, unit) {
+                loc.bestEnemy = unit;
+            }
+        }
+    }
+}
+
+let at: MapLocation;
+let actionRadius: i32;
+fn doMicro() throws GameActionException {
+    at = rc.getLocation();
+    actionRadius = rc.getType().actionRadiusSquared;
+
+    let n: LocInfo = null;
+    let locs: [LocInfo; 9] = [n,n,n,n,n,n,n,n,n];
+    let cloc: LocInfo = null;
+    let directions = allDirections();
+    for i in unroll 0..9 {
+        let dir = directions[i];
+        if dir == Direction::CENTER || rc.canMove(dir) {
+            locs[i] = LocInfo();
+            locs[i].init(at.add(dir));
+            if dir == Direction::CENTER {
+                cloc = locs[i];
+            }
+        }
+    }
+    for bot in Mem::nearbyRobotsThem {
+        for loc in locs {
+            updateLoc(loc, bot);
+        }
+    }
+    let best: LocInfo = null;
+    for loc in locs {
+        if loc != null {
+            if locBetter(best, loc) {
+                best = loc;
+            }
+        }
+    }
+    if best == null {
+        println("ERROR! best should not be null, CENTER is always an option");
+    }
+    // We can attack before or after moving, do whichever one is better
+    let bestNow = cloc.bestEnemy;
+    let bestThen = best.bestEnemy;
+    if bestNow != null && unitBetter(bestThen, bestNow) {
+        if bestNow != null && rc.canAttack(bestNow.location) {
+            rc.attack(bestNow.location);
+        }
+    }
+    if best.loc != at {
+        rc.move(at.dirTo(best.loc));
+    }
+    if bestThen != null && rc.canAttack(bestThen.location) {
+        rc.attack(bestThen.location);
+    }
+}
+
 let lastProtect: MapLocation = null;
 let lastSoldier: MapLocation = null;
 fn runSoldier() throws GameActionException {
@@ -95,28 +225,6 @@ fn runSoldier() throws GameActionException {
             nearbyFriendlyHP += i.health;
         }
     }
-    // TODO:
-    // We want soldiers to be in groups instead of traveling alone, so that attacking works better.
-    // How do we implement that? What's the priority of group cohesion? Is it only in combat mode? (no it isn't)
-    // This didn't really work, but I'm not sure how else we would do it.
-
-    // if numSoldiers != 0 {
-    //     let soldierCenter = MapLocation(soldierTotX / numSoldiers, soldierTotY / numSoldiers);
-    //     rc.setIndicatorDot(soldierCenter, 0, 0, 255);
-    //     Paths::attractor = soldierCenter;
-    // }
-
-    let targets = attackTarget();
-    // TODO destructuring
-    let attack_target = targets.0;
-    let move_target = targets.1;
-
-    // Attack
-    if attack_target != null {
-        if rc.canAttack(attack_target.location) {
-            rc.attack(attack_target.location);
-        }
-    }
 
     // Move
     // Defend our Archon if we're not in very early game and we've seen enemies recently
@@ -125,52 +233,11 @@ fn runSoldier() throws GameActionException {
     let protectStill = false;
 
     // Go towards an enemy, but don't abandon the archon
+    // just kidding abandon it as much as you want
     let protect = closestArchon != null && protectTurns > 0 && rc.getRoundNum() > 40;
-    if attack_target != null {
-        // Combat mode pathfinding
-        // We attack faster on lower rubble tiles
-        let curRubble = rc.senseRubble(loc);
-        let minRubble = curRubble;
-        let minDir = Direction::CENTER;
-        let shouldRun = nearbyEnemyHP > nearbyFriendlyHP;
-        let bestDist = loc.distanceSquaredTo(attack_target.location);
-        let fightsBack = attack_target.type.damage > 0;
-        for dir in RobotPlayer::directions {
-            let new_loc = loc.add(dir);
-            if rc.canMove(dir) && (fightsBack || shouldRun || new_loc.isWithinDistanceSquared(attack_target.location, rc.getType().actionRadiusSquared)) {
-                let rubble = rc.senseRubble(new_loc);
-                if rubble < minRubble {
-                    minRubble = rubble;
-                    minDir = dir;
-                } else if rubble == minRubble {
-                    if shouldRun {
-                        if new_loc.distanceSquaredTo(attack_target.location) > bestDist {
-                            minDir = dir;
-                            bestDist = new_loc.distanceSquaredTo(attack_target.location);
-                        }
-                    } else {
-                        if new_loc.distanceSquaredTo(attack_target.location) < bestDist {
-                            minDir = dir;
-                            bestDist = new_loc.distanceSquaredTo(attack_target.location);
-                        }
-                    }
-                }
-            }
-        }
-        if minDir != Direction::CENTER {
-            if rc.canMove(minDir) {
-                rc.move(minDir);
-            }
-        }
+    if Mem::nearbyRobotsThem.len() > 0 {
+        doMicro();
         return;
-    } else if move_target != null && (!protect || closestArchon.location.isWithinDistanceSquared(loc, 13)) {
-        if nearbyEnemyHP > nearbyFriendlyHP {
-            // Run away, we'll just die if we stay
-            let dirTowards = loc.dirTo(move_target.location);
-            Paths::target = loc.sub(dirTowards).sub(dirTowards);
-        } else {
-            Paths::target = move_target.location;
-        }
     } else if protect { //&& numSoldiers < (2 + 3 * Mem::nearbyRobotsThem.len()) && rc.getRoundNum() > 100 {
         // Try to stay about 13 units^2 of the archon so we're not in the way
         protectTurns -= 1;

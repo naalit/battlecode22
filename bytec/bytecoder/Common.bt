@@ -81,6 +81,7 @@ extern enum Direction {
     fn rotateRight(): Direction;
     fn opposite(): Direction;
 }
+extern fn allDirections(): [Direction] = "Direction.values";
 extern class MapLocation {
     constructor(x: i32, y: i32);
     let x: i32;
