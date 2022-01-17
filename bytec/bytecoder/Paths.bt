@@ -88,7 +88,7 @@ fn targetMoveGreedy(exploring: bool): bool throws GameActionException {
     if (best == null && rc.isMovementReady()) {
         if (exploring) {
             retarget();
-            return targetMove(false);
+            return targetMoveGreedy(false);
         }
         // This isn't used right now, but we might want to try removing the others from options and adding this back in
         // EDIT: it's about non-strictly-closer locations, but is probably never used, especially since we don't set exploring=false currently
@@ -218,7 +218,11 @@ fn inline doLoc(x: i32, y: i32) throws GameActionException {
     let loc = at.translate(x, y);
     let baseIdx = (4 + x) * 9 + 4 + y;
     if rc.onTheMap(loc) && !robots[baseIdx] {
-        let baseRubble = rc.senseRubble(loc) + 10;
+        let baseRubble = rc.senseRubble(loc);
+        if !lowPass && baseRubble >= 50 {
+            baseRubble *= 5;
+        }
+        baseRubble += 10;
         let oldScore = cache[baseIdx].0;
         let oldDir = cache[baseIdx].1;
         let maxD = if x*x > y*y { x*x } else { y*y };
@@ -309,9 +313,11 @@ fn pathFinish(from: MapLocation, to: MapLocation): Direction {
 
 let lastDir: Direction = null;
 let lastTarget: MapLocation = null;
+let lowPass = false;
 
-fn targetMove(exploring: bool): bool throws GameActionException {
+fn targetMove(exploring: bool, allowLowPass: bool): bool throws GameActionException {
     let loc = rc.getLocation();
+    lowPass = allowLowPass;
 
     if (target == null || target == loc || (exploring && target == lastRetarget && rc.canSenseLocation(target)) || (exploring && rc.canSenseLocation(target) && !rc.onTheMap(target))) {
         if exploring {
