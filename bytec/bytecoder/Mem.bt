@@ -9,6 +9,8 @@ use RobotPlayer::rc;
 let nearbyRobotsMe: [RobotInfo] = [];
 let nearbyRobotsThem: [RobotInfo] = [];
 let seenEnemies = false;
+let minerCorners: [(bool, bool)] = [; 4];
+let cornerLocs: [MapLocation] = [];
 
 // Run this once a turn, before doing other things.
 // It caches nearby robots, communicates stuff it found, etc.
@@ -27,6 +29,38 @@ fn maintain() throws GameActionException {
         if !seenEnemies && nearbyRobotsThem.len() > 0 {
             seenEnemies = true;
             rc.writeSharedArray(SEEN_ENEMIES_LOC, 1);
+        }
+    }
+
+    if rc.getType() == RobotType::ARCHON {
+        let corners = rc.readSharedArray(MINER_CORNER_LOC);
+        if corners >> 4 != 0 {
+            rc.writeSharedArray(MINER_CORNER_LOC, corners & 0b1111);
+        }
+    } else if rc.getType() == RobotType::MINER {
+        let corners = rc.readSharedArray(MINER_CORNER_LOC);
+        for i in unroll 0..4 {
+            minerCorners[i] = (corners & (1 << (i + 4)) != 0, corners & (1 << i) != 0);
+        }
+        if cornerLocs.len() == 0 {
+            cornerLocs.push(MapLocation(0, 0));
+            cornerLocs.push(MapLocation(0, rc.getMapHeight() - 1));
+            cornerLocs.push(MapLocation(rc.getMapWidth() - 1, 0));
+            cornerLocs.push(MapLocation(rc.getMapWidth() - 1, rc.getMapHeight() - 1));
+        }
+        let changed = false;
+        for i in 0..4 {
+            if !minerCorners[i].1 {
+                let loc = cornerLocs[i];
+                if rc.canSenseLocation(loc) {
+                    minerCorners[i] = (false, true);
+                    corners |= 1 << i;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            rc.writeSharedArray(MINER_CORNER_LOC, corners);
         }
     }
 
@@ -49,13 +83,21 @@ fn maintain() throws GameActionException {
     // rc.setIndicatorString("Max maintain() btc: " + max_btc + ", avg: " + tot_btc / maintain_count);
 }
 
+fn inline minerGoForCorner(i: i32) {
+    minerCorners[i] = (true, false);
+    let corners = rc.readSharedArray(MINER_CORNER_LOC);
+    corners |= 1 << (i + 4);
+    rc.writeSharedArray(MINER_CORNER_LOC, corners);
+}
+
 // A location takes up 12 bits
 // ...this is a lot easier than last year
 fn encodeLoc(loc: MapLocation): i32 = (loc.y << 6) | loc.x;
 fn decodeLoc(x: i32): MapLocation = MapLocation(x & 0b111111, (x >> 6) & 0b111111);
 
 // 0-??: enemy archon list
-// ??-9:
+// ??-8:
+//  9: four corners in low digits for miners
 // 10: total number of miners
 // 11: seen enemies yet
 // 12: lead farming marker for builders (not used currently)
@@ -72,6 +114,7 @@ let CMD_LEN = 8;
 let SEEN_ENEMIES_LOC = 11;
 let ENEMY_LOC = 32;
 let ENEMY_LEN = 16;
+let MINER_CORNER_LOC = 9;
 // There are two command queues that we switch between
 // This is so that Archons can read messages sent last turn by other Archons later in the order
 fn cmdLoc(): i32 throws GameActionException {

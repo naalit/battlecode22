@@ -293,7 +293,7 @@ fn pathFinish(from: MapLocation, to: MapLocation): Direction {
         let dx = x - tx;
         let dy = x - tx;
         let d2 = dx*dx + dy*dy;
-        let score = cache[i].0 + 20 * max(abs(x - tx), abs(y - ty));
+        let score = cache[i].0 + 50 * max(abs(x - tx), abs(y - ty));
         if score < bestScore {
             bestScore = score;
             bestDir = cache[i].1;

@@ -99,7 +99,29 @@ fn runMiner() throws GameActionException {
         } else if closest_soldier != null {
             let dirAway = closest_soldier.dirTo(loc);
             Paths::target = loc.add(dirAway).add(dirAway);
+        } else {
+            let closest_d = 10000;
+            let closest_l: MapLocation = null;
+            let closest_i = 0;
+            for i in 0..4 {
+                if !Mem::minerCorners[i].0 && !Mem::minerCorners[i].1 {
+                    let l = Mem::cornerLocs[i];
+                    let d = l.distanceSquaredTo(loc);
+                    if d < closest_d {
+                        closest_d = d;
+                        closest_l = l;
+                        closest_i = i;
+                    }
+                }
+            }
+            if closest_l != null {
+                Paths::target = closest_l;
+                // Retarget if we can see it
+                Paths::lastRetarget = closest_l;
+                Mem::minerGoForCorner(closest_i);
+            }
         }
+
         Paths::targetMove(true);
     }
 

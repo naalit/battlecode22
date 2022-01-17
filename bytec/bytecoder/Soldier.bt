@@ -134,9 +134,10 @@ fn runSoldier() throws GameActionException {
         let minDir = Direction::CENTER;
         let shouldRun = nearbyEnemyHP > nearbyFriendlyHP;
         let bestDist = loc.distanceSquaredTo(attack_target.location);
+        let fightsBack = attack_target.type.damage > 0;
         for dir in RobotPlayer::directions {
             let new_loc = loc.add(dir);
-            if rc.canMove(dir) && (shouldRun || new_loc.isWithinDistanceSquared(attack_target.location, rc.getType().actionRadiusSquared)) {
+            if rc.canMove(dir) && (fightsBack || shouldRun || new_loc.isWithinDistanceSquared(attack_target.location, rc.getType().actionRadiusSquared)) {
                 let rubble = rc.senseRubble(new_loc);
                 if rubble < minRubble {
                     minRubble = rubble;
@@ -211,19 +212,20 @@ fn runSoldier() throws GameActionException {
                     available = false;
                 }
             }
-            // break;
         }
         if available {
             Mem::addAvailableSoldier();
         }
         if rc.getHealth() > 20 && Mem::closestSoldier != null && (Paths::target == null || Paths::target == lastSoldier || Paths::target == Paths::lastRetarget) {
             Paths::target = Mem::closestSoldier;
+            Paths::lastRetarget = Mem::closestSoldier;
             lastSoldier = Mem::closestSoldier;
         }
     } else {
         Mem::addAvailableSoldier();
         if rc.getHealth() > 20 && Mem::closestSoldier != null && (Paths::target == null || Paths::target == lastSoldier || Paths::target == Paths::lastRetarget) {
             Paths::target = Mem::closestSoldier;
+            Paths::lastRetarget = Mem::closestSoldier;
             lastSoldier = Mem::closestSoldier;
         }
     }
