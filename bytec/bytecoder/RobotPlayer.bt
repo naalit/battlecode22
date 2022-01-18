@@ -236,15 +236,22 @@ fn runArchon() throws GameActionException {
                 }
             }
         }
-        // } else if roundsUntilOurs >= rc.getActionCooldownTurns() + 2 {
-        //     // Try to repair a robot in range
-        //     for i in Mem::nearbyRobotsMe {
-        //         if i.health <= i.type.health - RobotType::ARCHON.getHealing(rc.getLevel()) && rc.canRepair(i.location) {
-        //             rc.repair(i.location);
-        //             break;
-        //         }
-        //     }
-        // }
+        if rc.isActionReady() {
+            // Try to repair a robot in range.
+            // The targeting logic picks the most important and vulnerable unit,
+            // so it works pretty well in this case too!
+            let bestUnit: RobotInfo = null;
+            for i in Mem::nearbyRobotsMe {
+                if i.health <= i.type.health && rc.canRepair(i.location) {
+                    if Soldier::unitBetter(bestUnit, i) {
+                        bestUnit = i;
+                    }
+                }
+            }
+            if bestUnit != null {
+                rc.repair(bestUnit.location);
+            }
+        }
     }
 }
 

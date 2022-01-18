@@ -8,6 +8,8 @@ use RobotPlayer::rc;
 // We generally try defend this archon
 // There is usually only one in range so we only bother with one
 let closestArchon: RobotInfo;
+let archonInRange = false;
+define RETREAT_HEALTH = 10;
 
 let protectTurns = 20;
 fn attackTarget(): (RobotInfo, RobotInfo) {
@@ -52,12 +54,14 @@ class LocInfo {
     let rubble: i32;
     let bestEnemy: RobotInfo;
     let distToEnemy: i32;
+    let archonDist: i32;
 
     fn init(loc: MapLocation) throws GameActionException {
         self.loc = loc;
         self.rubble = rc.senseRubble(loc);
         self.enemyDamage = 0;
         self.distToEnemy = 100000;
+        self.archonDist = closestArchon.location.distanceSquaredTo(loc);
     }
 }
 fn unitBetter(old: RobotInfo, new: RobotInfo): bool {
@@ -109,27 +113,37 @@ fn unitBetter(old: RobotInfo, new: RobotInfo): bool {
 fn locBetter(old: LocInfo, new: LocInfo): bool {
     if old == null {
         true
-    } else if new.rubble <= old.rubble - 20 {
-        true
-    } else if new.rubble <= old.rubble {
-        if  new.enemyDamage <= 3 && 
+    // } else if old.rubble > new.rubble + 10 {
+    //     true
+    } else if new.rubble <= old.rubble + 20 {
+        if  new.enemyDamage <= 300 / (10 + new.rubble) && 
             new.bestEnemy != null && 
             new.bestEnemy.health <= rc.getHealth() && 
             unitBetter(old.bestEnemy, new.bestEnemy)
             {
             true
-        } else if new.enemyDamage < old.enemyDamage {
+        } else if old.enemyDamage <= 300 / (10 + old.rubble) && 
+            old.bestEnemy != null && 
+            old.bestEnemy.health <= rc.getHealth() && 
+            unitBetter(new.bestEnemy, old.bestEnemy)
+            {
+                false
+        } else
+        if new.enemyDamage < old.enemyDamage {
             true
         } else if new.enemyDamage == old.enemyDamage {
-            if new.rubble < old.rubble && new.enemyDamage > 0 {
+            if rc.getHealth() <= RETREAT_HEALTH && new.archonDist < old.archonDist {
                 true
-            } else if new.rubble <= old.rubble {
+            } else if new.rubble < old.rubble && new.enemyDamage > 0 {
+                true
+            } else if new.rubble <= old.rubble + 10 {
                 if new.bestEnemy != null && unitBetter(old.bestEnemy, new.bestEnemy) {
                     true
                 } else if old.bestEnemy == null || !unitBetter(new.bestEnemy, old.bestEnemy) {
                     if new.rubble < old.rubble {
                         true
-                    } else if nearbyFriendlyHP >= nearbyEnemyHP {
+                    } else 
+                    if nearbyFriendlyHP >= nearbyEnemyHP {
                         new.distToEnemy < old.distToEnemy
                     } else {
                         new.distToEnemy > old.distToEnemy
@@ -139,8 +153,8 @@ fn locBetter(old: LocInfo, new: LocInfo): bool {
                 false
             }
         } else {
-                false
-            }
+            false
+        }
     } else {
         false
     }
@@ -149,7 +163,8 @@ fn inline updateLoc(loc: LocInfo, unit: RobotInfo) {
     if loc != null {
         let d = loc.loc.distanceSquaredTo(unit.location);
         if unit.type.damage > 0 && d <= unit.type.actionRadiusSquared {
-            loc.enemyDamage += unit.type.damage;
+            let rubble = rc.senseRubble(unit.location);
+            loc.enemyDamage += (unit.type.damage * 100) / (10 + rubble);
         }
         if d <= actionRadius {
             if unitBetter(loc.bestEnemy, unit) {
@@ -164,6 +179,7 @@ let at: MapLocation;
 let actionRadius: i32;
 let nearbyFriendlyHP: i32;
 let nearbyEnemyHP: i32;
+let nearbyFriendlyDamage: i32;
 fn doMicro() throws GameActionException {
     at = rc.getLocation();
     actionRadius = rc.getType().actionRadiusSquared;
@@ -192,19 +208,17 @@ fn doMicro() throws GameActionException {
             updateLoc(loc, bot);
         }
     }
-    closestArchon = null;
     nearbyFriendlyHP = rc.getHealth();
+    nearbyFriendlyDamage = 0;
     for i in Mem::nearbyRobotsMe {
-        if i.type == RobotType::ARCHON {
-            if closestArchon == null || i.location.isWithinDistanceSquared(at, closestArchon.location.distanceSquaredTo(at)) {
-                closestArchon = i;
-            }
-        } else if i.type.damage > 0 {
+        if i.type.damage > 0 {
             nearbyFriendlyHP += i.health;
+            let rubble = rc.senseRubble(i.location);
+            nearbyFriendlyDamage += (i.type.damage * 10) / (10 + rubble);
         }
     }
 
-    let best: LocInfo = null;
+    let best: LocInfo = cloc;
     for loc in locs {
         if loc != null {
             if locBetter(best, loc) {
@@ -212,6 +226,7 @@ fn doMicro() throws GameActionException {
             }
         }
     }
+    rc.setIndicatorString("MICRO: Damage: " + best.enemyDamage + ", rubble: " + best.rubble);
     if best == null {
         println("ERROR! best should not be null, CENTER is always an option");
     }
@@ -231,22 +246,28 @@ fn doMicro() throws GameActionException {
     }
 }
 
+fn retreat(): bool throws GameActionException {
+    if closestArchon != null {
+        Paths::target = closestArchon.location;
+        Paths::targetMove(false, false)
+    } else {
+        false
+    }
+}
+
 let lastProtect: MapLocation = null;
 let lastSoldier: MapLocation = null;
 fn runSoldier() throws GameActionException {
     let loc = rc.getLocation();
 
-    // closestArchon = null;
-    // let nearbyFriendlyHP = rc.getHealth();
-    // for i in Mem::nearbyRobotsMe {
-    //     if i.type == RobotType::ARCHON {
-    //         if closestArchon == null || i.location.isWithinDistanceSquared(loc, closestArchon.location.distanceSquaredTo(loc)) {
-    //             closestArchon = i;
-    //         }
-    //     } else if i.type.damage > 0 {
-    //         nearbyFriendlyHP += i.health;
-    //     }
-    // }
+    for i in Mem::nearbyRobotsMe {
+        if i.type == RobotType::ARCHON {
+            if closestArchon == null || i.location.isWithinDistanceSquared(loc, closestArchon.location.distanceSquaredTo(loc)) {
+                closestArchon = i;
+                archonInRange = true;
+            }
+        }
+    }
 
     // Move
     // Defend our Archon if we're not in very early game and we've seen enemies recently
@@ -256,13 +277,18 @@ fn runSoldier() throws GameActionException {
 
     // Go towards an enemy, but don't abandon the archon
     // just kidding abandon it as much as you want
-    let protect = closestArchon != null && protectTurns > 0 && rc.getRoundNum() > 40;
+    let protect = false;//archonInRange && closestArchon != null && protectTurns > 0 && rc.getRoundNum() > 40;
     let lowPass = false;
     if Mem::nearbyRobotsThem.len() > 0 {
         doMicro();
         return;
-    } else if protect { //&& numSoldiers < (2 + 3 * Mem::nearbyRobotsThem.len()) && rc.getRoundNum() > 100 {
+    } else if rc.getHealth() <= RETREAT_HEALTH && closestArchon != null && !closestArchon.location.isWithinDistanceSquared(loc, RobotType::ARCHON.actionRadiusSquared) && retreat() {
+        return;
+    } else if protect || (closestArchon != null && rc.getHealth() < rc.getType().health) {
         // Try to stay about 13 units^2 of the archon so we're not in the way
+        // If we need to heal, make sure we stay within the archon's action radius as well
+        // and stay nearby until we're fully healed and can go back to the fight
+        let needsHeal = rc.getHealth() < rc.getType().health;
         protectTurns -= 1;
         let r2 = 13;
         let closest: Direction = null;
@@ -280,7 +306,7 @@ fn runSoldier() throws GameActionException {
                         continue;
                     }
                 d = abs(d - r2);
-                if (d < closest_d) {
+                if (d < closest_d && (!needsHeal || d <= RobotType::ARCHON.actionRadiusSquared)) {
                     closest = dir;
                     closest_d = d;
                 }
