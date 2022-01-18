@@ -226,17 +226,19 @@ fn inline doLoc(x: i32, y: i32) throws GameActionException {
         let oldScore = cache[baseIdx].0;
         let oldDir = cache[baseIdx].1;
         let maxD = if x*x > y*y { x*x } else { y*y };
+        let toBeat = cache[baseIdx].0 - baseRubble;
 
         for dx in unroll -1..2 {
             for dy in unroll -1..2 {
                 let x2 = x + dx;
                 let y2 = y + dy;
-                if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 <= maxD && y2*y2 <= maxD) {
+                if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
                     let i = (4 + x2) * 9 + 4 + y2;
                     // let score = cache[i].0 + baseRubble;
-                    if cache[i].0 + baseRubble < cache[baseIdx].0 {
+                    if cache[i].0 < toBeat {
                         // rc.setIndicatorLine(loc, loc.translate(dx, dy), 0, 0, 127);
                         cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
+                        toBeat = cache[i].0;
                     }
                 }
             }
