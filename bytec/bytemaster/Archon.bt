@@ -51,6 +51,7 @@ fn turn() throws GameActionException {
     } else {
         if archonOrder == 0 {
             Mem::maintainMinerCorners();
+            Mem::maintainSoldiers();
         }
 
         let minerCount = Mem::getMinerCount();
@@ -78,7 +79,7 @@ fn turn() throws GameActionException {
             // so it works pretty well in this case too!
             let bestUnit: RobotInfo = null;
             for i in Mem::nearbyAllies {
-                if i.health <= i.type.health && rc.canRepair(i.location) {
+                if i.health < i.type.health && rc.canRepair(i.location) {
                     if Combat::unitBetter(bestUnit, i) {
                         bestUnit = i;
                     }

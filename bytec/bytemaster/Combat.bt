@@ -221,6 +221,7 @@ fn combatMicro() throws GameActionException {
         nearbyEnemyHP = 0;
         for bot in Mem::nearbyEnemies {
             if bot.type.damage > 0 {
+                Mem::addSoldier(bot.location);
                 nearbyEnemyHP += bot.health;
             }
             for loc in locs {
@@ -266,6 +267,9 @@ fn combatMicro() throws GameActionException {
     } else if rc.isActionReady() {
         let best: RobotInfo = null;
         for i in Mem::nearbyEnemies {
+            if i.type.damage > 0 {
+                Mem::addSoldier(i.location);
+            }
             if rc.canAttack(i.location) {
                 if unitBetter(best, i) {
                     best = i;

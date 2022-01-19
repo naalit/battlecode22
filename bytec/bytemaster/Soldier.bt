@@ -22,6 +22,13 @@ fn turn() throws GameActionException {
         return;
     }
 
+    let closestSoldier = Mem::getClosestSoldier(loc);
+    if closestSoldier != null && closestSoldier.isWithinDistanceSquared(loc, 49) && !rc.canSenseLocation(closestSoldier) {
+        Paths::target = closestSoldier;
+        Paths::targetMove(true, false);
+        return;
+    }
+
     if Mem::closestArchon != null && Mem::closestArchon.isWithinDistanceSquared(loc, RobotType::ARCHON.actionRadiusSquared) && rc.getHealth() < rc.getType().health {
         // Try to stay about 13 units^2 of the archon so we're not in the way
         // If we need to heal, make sure we stay within the archon's action radius as well

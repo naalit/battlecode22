@@ -5,6 +5,10 @@ extern {
 use Common::*;
 use RobotPlayer::rc;
 
+// Copied from Mem since we want to inline them
+define ENEMY_SOLDIER_LOC = 15;
+define ENEMY_SOLDIER_LEN = 16;
+
 fn preTurn() throws GameActionException {
     // Make sure to mine before we do anything else, in case maintain() and micro goes over on bytecode
     tryMine();
@@ -35,6 +39,13 @@ fn turn() throws GameActionException {
                 } else {
                     Paths::targetMove(true, true);
                 }
+            }
+        }
+    } else {
+        // microMove() didn't report the soldiers, so do that here
+        for i in Mem::nearbyEnemies {
+            if i.type.damage > 0 {
+                Mem::addSoldier(i.location);
             }
         }
     }
@@ -139,8 +150,23 @@ fn microMove(): bool throws GameActionException {
             }
         }
     }
+    for i in unroll ENEMY_SOLDIER_LOC..ENEMY_SOLDIER_LOC+ENEMY_SOLDIER_LEN {
+        let r = rc.readSharedArray(i);
+        if r != 0 {
+            let loc = Mem::decodeLoc(r - 1);
+            if !loc.isWithinDistanceSquared(at, 20) {
+                for l in locs {
+                    // Assume enemy soldiers we can't see could have moved 1 tile by now
+                    if l != null && loc.isWithinDistanceSquared(l.loc, 20) {
+                        l.enemyDamage += 100;
+                    }
+                }
+            }
+        }
+    }
     for i in Mem::nearbyEnemies {
         if i.type.damage > 0 {
+            Mem::addSoldier(i.location);
             for l in locs {
                 if l != null {
                     if i.location.isWithinDistanceSquared(l.loc, i.type.actionRadiusSquared) {

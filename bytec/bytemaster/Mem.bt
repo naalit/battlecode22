@@ -19,6 +19,7 @@ let closestArchon: MapLocation = null;
 // 7-8: miner corner stuff
 // 9: miner count
 // 10-13: friendly archon locations
+// 14,15-30: enemy soldier locations (the first one is the current index)
 define ARCHON_IDX_LOC = 0;
 define ENEMY_ARCHON_LOC = 1;
 define ENEMY_ARCHON_LEN = 6;
@@ -26,6 +27,12 @@ define MINER_CORNER_LOC = 7;
 define MINER_COUNT_LOC = 9;
 let FRIENDLY_ARCHON_LOC = 10;
 define FRIENDLY_ARCHON_LEN = 4;
+// we need to use these in Miner and that happens to run first so we can't do this
+// TODO fix this system or add proper constants or something
+// define ENEMY_SOLDIER_LOC = 15;
+// define ENEMY_SOLDIER_LEN = 16;
+
+define ENEMY_SOLDIER_KEEP_TURNS = 2;
 
 // A location takes up 12 bits
 // ...this is a lot easier than last year
@@ -62,6 +69,96 @@ fn maintain() throws GameActionException {
 
     readArchons();
     searchArchons();
+
+    soldiersAdded = 0;
+}
+
+let enemySoldiers: [MapLocation] = [];
+fn getSoldiers(): [MapLocation] throws GameActionException {
+    enemySoldiers.clear();
+    for i in unroll ENEMY_SOLDIER_LOC..ENEMY_SOLDIER_LOC+ENEMY_SOLDIER_LEN {
+        let r = rc.readSharedArray(i);
+        if r != 0 {
+            enemySoldiers.push(decodeLoc(r - 1));
+        }
+    }
+    enemySoldiers
+}
+fn getClosestSoldier(ref: MapLocation): MapLocation throws GameActionException {
+    let bestD = 100000;
+    let best: MapLocation = null;
+    for i in unroll ENEMY_SOLDIER_LOC..ENEMY_SOLDIER_LOC+ENEMY_SOLDIER_LEN {
+        let r = rc.readSharedArray(i);
+        if r != 0 {
+            let loc = decodeLoc(r - 1);
+            let d = ref.distanceSquaredTo(loc);
+            if d < bestD {
+                bestD = d;
+                best = loc;
+            }
+        }
+    }
+    best
+}
+let soldiersAdded = 0;
+fn addSoldier(loc: MapLocation) throws GameActionException {
+    // Don't add too many soldiers in one turn, since adding each one costs 200 bytecode
+    // 5 soldiers is 1000 bytecode
+    let soldierLimit = if rc.getType() == RobotType::MINER { 2 } else { 5 };
+    if soldiersAdded < soldierLimit {
+        soldiersAdded += 1;
+        let idx = rc.readSharedArray(ENEMY_SOLDIER_LOC - 1);
+        let nidx = (idx + 1) % ENEMY_SOLDIER_LEN;
+        rc.writeSharedArray(ENEMY_SOLDIER_LOC + idx, encodeLoc(loc) + 1);
+        rc.writeSharedArray(ENEMY_SOLDIER_LOC - 1, nidx);
+    }
+}
+let oldIdxs: [i32; ENEMY_SOLDIER_KEEP_TURNS];
+fn maintainSoldiers() throws GameActionException {
+    fn inline cycleIdxs(idx: i32): i32 {
+        let t = oldIdxs[0];
+        for i in unroll 1..oldIdxs.len() {
+            oldIdxs[i - 1] = oldIdxs[i];
+        }
+        oldIdxs[oldIdxs.len() - 1] = idx;
+        t
+    }
+
+    let idx = rc.readSharedArray(ENEMY_SOLDIER_LOC - 1);
+    let oldIdx = cycleIdxs(idx);
+
+    // Remove everything behind oldIdx, assuming we didn't get more than ENEMY_SOLDIER_LEN soldiers in between
+    // ...which *probably* shouldn't happen much?
+
+    // TODO can we `break` anywhere in these loops?
+
+    // [...oldIdx...idx....]
+    //  ---            ---- remove
+    // or
+    // [....oldIdx=idx.....]
+    //  ----          ----- remove everything b/c we haven't added any new soldiers recently
+    if oldIdx <= idx {
+        for i in 0..oldIdx {
+            if rc.readSharedArray(ENEMY_SOLDIER_LOC + i) != 0 {
+                rc.writeSharedArray(ENEMY_SOLDIER_LOC + i, 0);
+            }
+        }
+        for i in idx..ENEMY_SOLDIER_LEN {
+            if rc.readSharedArray(ENEMY_SOLDIER_LOC + i) != 0 {
+                rc.writeSharedArray(ENEMY_SOLDIER_LOC + i, 0);
+            }
+        }
+    // [...idx...oldIdx....]
+    //        --- remove
+    } else {
+        for i in idx..oldIdx {
+            if rc.readSharedArray(ENEMY_SOLDIER_LOC + i) != 0 {
+                rc.writeSharedArray(ENEMY_SOLDIER_LOC + i, 0);
+            }
+        }
+    // they're equal, so we haven't seen any soldiers since
+    // so clear everything
+    }
 }
 
 fn registerArchon(index: i32, loc: MapLocation) throws GameActionException {
