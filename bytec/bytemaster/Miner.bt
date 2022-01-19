@@ -26,7 +26,23 @@ fn turn() throws GameActionException {
     if rc.isMovementReady() {
         if !microMove() {
             if closestLead != null {
-                Paths::target = closestLead;
+                // If micro didn't move to the adjacent location, it was for a reason
+                if closestLead.isWithinDistanceSquared(rc.getLocation(), 8) {
+                    return;
+                }
+                let bestLoc: MapLocation = closestLead;
+                let bestPass = 100000;
+                for i in ALL_MOVE_DIRECTIONS {
+                    let l = closestLead.add(i);
+                    if !rc.canSenseRobotAtLocation(l) && rc.canSenseLocation(l) {
+                        let pass = rc.senseLead(l);
+                        if pass < bestPass {
+                            bestPass = pass;
+                            bestLoc = l;
+                        }
+                    }
+                }
+                Paths::target = bestLoc;
                 Paths::targetMove(false, true);
             } else if currentCorner != -1 {
                 Paths::target = Mem::cornerLocs[currentCorner];
@@ -103,15 +119,41 @@ fn findSpawnSpace(): Direction throws GameActionException {
             }
         }
     }
+    // 9x9 in units of lead mined per 10 turns
+    let at = rc.getLocation();
+    let miningPowers: [i32] = [; 81];
+    for i in Mem::nearbyAllies {
+        if i.type == RobotType::MINER {
+            let x = i.location.x - at.x;
+            let y = i.location.y - at.y;
+            let rubble = rc.senseRubble(i.location);
+            for dx in unroll -1..2 {
+                for dy in unroll -1..2 {
+                    let x2 = x + dx;
+                    let y2 = y + dy;
+                    if x2*x2 + y2*y2 <= 20 {
+                        miningPowers[(4 + x2) * 9 + 4 + y2] += 500 / (10 + rubble);
+                    }
+                }
+            }
+        }
+    }
     for loc in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
+        // Make sure existing miners won't mine it out in the next 10 turns
+        let existingPower = 0;
+        if loc.isWithinDistanceSquared(at, 20) {
+            existingPower = miningPowers[(loc.x - at.x + 4) * 9 + 4 + loc.y - at.y];
+        }
+        let lead = rc.senseLead(loc);
         for l in locs {
             if l != null {
                 let d = max(abs(l.loc.x - loc.x), abs(l.loc.y - loc.y));
                 if d < l.leadDist {
                     l.leadDist = d;
                 }
-                if d <= 2 {
-                    l.adjacentLead += rc.senseLead(loc);
+                if d <= 1 {
+                    // The proportion of the lead that this miner would mine
+                    l.adjacentLead += lead * (500 / (10 + l.rubble)) / (500 / (10 + l.rubble) + existingPower);
                 }
             }
         }
@@ -177,11 +219,32 @@ fn microMove(): bool throws GameActionException {
             }
         }
     }
+    // 9x9 in units of lead mined per 10 turns
+    let miningPowers: [i32] = [; 81];
+    for i in Mem::nearbyAllies {
+        if i.type == RobotType::MINER {
+            let x = i.location.x - at.x;
+            let y = i.location.y - at.y;
+            let rubble = rc.senseRubble(i.location);
+            for dx in unroll -1..2 {
+                for dy in unroll -1..2 {
+                    let x2 = x + dx;
+                    let y2 = y + dy;
+                    if x2*x2 + y2*y2 <= 20 {
+                        miningPowers[(4 + x2) * 9 + 4 + y2] += 500 / (10 + rubble);
+                    }
+                }
+            }
+        }
+    }
     closestLead = null;
     let closestD = 100000;
     for loc in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
         let d0 = at.distanceSquaredTo(loc);
-        if d0 < closestD {
+        // Make sure existing miners won't mine it out in the next 10 turns
+        let existingPower = miningPowers[(loc.x - at.x + 4) * 9 + 4 + loc.y - at.y];
+        let lead = rc.senseLead(loc);
+        if d0 < closestD && existingPower < lead {
             closestLead = loc;
             closestD = d0;
         }
@@ -191,8 +254,9 @@ fn microMove(): bool throws GameActionException {
                 if d < l.leadDist {
                     l.leadDist = d;
                 }
-                if d <= 2 {
-                    l.adjacentLead += rc.senseLead(loc);
+                if d <= 1 {
+                    // The proportion of the lead that this miner would mine
+                    l.adjacentLead += lead * (500 / (10 + l.rubble)) / (500 / (10 + l.rubble) + existingPower);
                 }
             }
         }
@@ -205,11 +269,16 @@ fn microMove(): bool throws GameActionException {
         }
     }
 
-    if best != null && best.loc != at && (cloc.enemyDamage > 0 || best.adjacentLead > 0) {
-        rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
-        rc.move(at.dirTo(best.loc));
+    if best != null && (cloc.enemyDamage > 0 || best.adjacentLead > 0) {
+        if best.loc != at {
+            rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
+            rc.move(at.dirTo(best.loc));
+        } else {
+            rc.setIndicatorString("MICRO STAY: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
+        }
         true
     } else {
+        rc.setIndicatorString("NO MICRO: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
         false
     }
 }
