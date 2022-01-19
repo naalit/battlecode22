@@ -1,5 +1,4 @@
 extern {
-    package byterush;
     import battlecode.common.*;
 }
 
@@ -7,8 +6,21 @@ extern fn clockYield() = "Clock.yield";
 extern fn bytecodeNum(): i32 = "Clock.getBytecodeNum";
 extern fn bytecodeLeft(): i32 = "Clock.getBytecodesLeft";
 
+extern fn max(a: i32, b: i32): i32 = "Math.max";
+extern fn min(a: i32, b: i32): i32 = "Math.min";
 extern fn abs(i: i32): i32 = "Math.abs";
 extern fn println(msg: str) = "System.out.println";
+
+let ALL_MOVE_DIRECTIONS: [Direction; 8] = [
+    Direction::NORTH,
+    Direction::NORTHEAST,
+    Direction::EAST,
+    Direction::SOUTHEAST,
+    Direction::SOUTH,
+    Direction::SOUTHWEST,
+    Direction::WEST,
+    Direction::NORTHWEST,
+];
 
 extern enum AnomalyType {
     ABYSS,
@@ -81,6 +93,7 @@ extern enum Direction {
     fn rotateRight(): Direction;
     fn opposite(): Direction;
 }
+extern fn allDirections(): [Direction] = "Direction.values";
 extern class MapLocation {
     constructor(x: i32, y: i32);
     let x: i32;
@@ -224,7 +237,7 @@ extern class RobotController {
     // Return all locations that contain a nonzero amount of gold, within a specified radius of your robot location.
     fn senseNearbyLocationsWithGold(radiusSquared: i32): [MapLocation];
     // Return all locations that contain a nonzero amount of lead, within a specified radius of your robot location.
-    fn senseNearbyLocationsWithLead(radiusSquared: i32): [MapLocation];
+    fn senseNearbyLocationsWithLead(radiusSquared: i32, minLead: i32): [MapLocation];
     // Returns all robots within vision radius.
     fn senseNearbyRobots(): [RobotInfo];
     // Returns all robots that can be sensed within a certain distance of this robot.

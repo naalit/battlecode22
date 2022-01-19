@@ -141,7 +141,7 @@ fn clearMinerCount() throws GameActionException {
     rc.writeSharedArray(MINER_COUNT_LOC, 0);
 }
 fn addMinerCount() throws GameActionException {
-    rc.writeSharedArray(MINER_COUNT_LOC, rc.readSharedArray(AVAILABLE_SOLDIERS) + 1);
+    rc.writeSharedArray(MINER_COUNT_LOC, rc.readSharedArray(MINER_COUNT_LOC) + 1);
 }
 
 // (x, y, last_seen_turn)

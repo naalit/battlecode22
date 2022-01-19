@@ -1,0 +1,39 @@
+extern {
+    import battlecode.common.*;
+}
+
+use Common::*;
+
+let rc: RobotController;
+
+fn pub run(rc2: RobotController) {
+    rc = rc2;
+    loop {
+        extern "try {";
+
+        match rc.getType() {
+            ARCHON => Archon::preTurn(),
+            MINER => Miner::preTurn(),
+            SOLDIER => Soldier::preTurn(),
+            BUILDER => Builder::preTurn(),
+            WATCHTOWER => Watchtower::preTurn(),
+            SAGE => Sage::preTurn(),
+            LABORATORY => Laboratory::preTurn(),
+        }
+
+        Mem::maintain();
+
+        match rc.getType() {
+            ARCHON => Archon::turn(),
+            MINER => Miner::turn(),
+            SOLDIER => Soldier::turn(),
+            BUILDER => Builder::turn(),
+            WATCHTOWER => Watchtower::turn(),
+            SAGE => Sage::turn(),
+            LABORATORY => Laboratory::turn(),
+        }
+
+        extern "} catch (Exception e) { e.printStackTrace(); }";
+        clockYield();
+    }
+}

@@ -1,0 +1,283 @@
+extern {
+    import battlecode.common.*;
+}
+
+use Common::*;
+use RobotPlayer::rc;
+
+let RETREAT_HEALTH = 15;
+let at: MapLocation;
+let actionRadius: i32;
+let nearbyFriendlyHP: i32;
+let nearbyEnemyHP: i32;
+let nearbyFriendlyDamage: i32;
+let archonInRange = false;
+let selfDamage = 0;
+let selfHealth = 0;
+
+class LocInfo {
+    let loc: MapLocation;
+    let enemyDamage: i32;
+    let rubble: i32;
+    let bestEnemy: RobotInfo;
+    let distToEnemy: i32;
+    let archonDist: i32;
+
+    fn init(loc: MapLocation) throws GameActionException {
+        self.loc = loc;
+        self.rubble = rc.senseRubble(loc);
+        self.enemyDamage = 0;
+        self.distToEnemy = 100000;
+        if Mem::closestArchon != null {
+            self.archonDist = Mem::closestArchon.distanceSquaredTo(loc);
+        }
+    }
+}
+fn unitBetter(old: RobotInfo, new: RobotInfo): bool {
+    // Targeting priority:
+    fn inline priority(ty: RobotType): i32 = match ty {
+        // Sages are valuable and dangerous, kill on sight
+        SAGE => 7,
+        // The most immediate threat, if we don't kill them they'll kill us
+        SOLDIER => 6,
+        // We'll need to kill these to take out a watchtower
+        // probably should have special-case code for actually seeing a watchtower though
+        BUILDER => 5,
+        // Another threat
+        WATCHTOWER => 4,
+        // We probably won't take out an Archon anytime soon with Soldiers, but doing damage on it is good
+        // Really these last three are TBD though
+        ARCHON => 3,
+        MINER => 2,
+        LABORATORY => 1,
+    };
+
+    if old == null {
+        true
+    } else if priority(new.type) > priority(old.type) {
+        true
+    } else if priority(new.type) == priority(old.type) {
+        // Pick the lowest hp to kill more units more quickly, which is better than just doing damage
+        if new.health < old.health {
+            true
+        } else if new.health == old.health {
+            // Target the one closest to the Archon if there is one
+            if Mem::closestArchon != null && new.location.isWithinDistanceSquared(Mem::closestArchon, min(20, Mem::closestArchon.distanceSquaredTo(old.location))) {
+                true
+            // Otherwise just pick the closest one
+            } else if Mem::closestArchon == null {
+                new.location.isWithinDistanceSquared(at, at.distanceSquaredTo(old.location))
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+fn locBetter(old: LocInfo, new: LocInfo): bool {
+    if old == null {
+        true
+    // } else if old.rubble > new.rubble + 10 {
+    //     true
+    } else if new.rubble <= old.rubble + 20 {
+        if  new.enemyDamage <= nearbyFriendlyDamage / 2 + selfDamage / (10 + new.rubble) && 
+            new.bestEnemy != null && 
+            new.bestEnemy.health <= selfHealth && 
+            unitBetter(old.bestEnemy, new.bestEnemy)
+            {
+            true
+        } else if old.enemyDamage <= nearbyFriendlyDamage / 2 + selfDamage / (10 + old.rubble) && 
+            old.bestEnemy != null && 
+            old.bestEnemy.health <= selfHealth && 
+            unitBetter(new.bestEnemy, old.bestEnemy)
+            {
+                false
+        } else
+        if new.enemyDamage < old.enemyDamage {
+            true
+        } else if new.enemyDamage == old.enemyDamage {
+            if selfHealth <= RETREAT_HEALTH && new.archonDist < old.archonDist {
+                true
+            } else if new.rubble < old.rubble && new.enemyDamage > 0 {
+                true
+            } else if new.rubble <= old.rubble + 10 {
+                if new.bestEnemy != null && unitBetter(old.bestEnemy, new.bestEnemy) {
+                    true
+                } else if old.bestEnemy == null || !unitBetter(new.bestEnemy, old.bestEnemy) {
+                    if new.rubble < old.rubble {
+                        true
+                    } else 
+                    if nearbyFriendlyHP >= nearbyEnemyHP {
+                        new.distToEnemy < old.distToEnemy
+                    } else {
+                        new.distToEnemy > old.distToEnemy
+                    }
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+fn inline updateLoc(loc: LocInfo, unit: RobotInfo) {
+    if loc != null {
+        let d = loc.loc.distanceSquaredTo(unit.location);
+        if unit.type.damage > 0 && d <= unit.type.actionRadiusSquared {
+            let rubble = rc.senseRubble(unit.location);
+            loc.enemyDamage += (unit.type.damage * 100) / (10 + rubble);
+        }
+        if d <= actionRadius {
+            if unitBetter(loc.bestEnemy, unit) {
+                loc.bestEnemy = unit;
+                loc.distToEnemy = d;
+            }
+        }
+    }
+}
+
+fn initMicro(ty: RobotType) throws GameActionException {
+    at = rc.getLocation();
+    selfDamage = ty.damage * 100;
+    actionRadius = ty.actionRadiusSquared;
+}
+
+fn findSpawnSpace(ty: RobotType): Direction throws GameActionException {
+    initMicro(ty);
+    selfHealth = ty.health;
+
+    let n: LocInfo = null;
+    let locs: [LocInfo; 8] = [n,n,n,n,n,n,n,n];
+    for i in unroll 0..8 {
+        let dir = ALL_MOVE_DIRECTIONS[i];
+        if rc.canBuildRobot(ty, dir) {
+            locs[i] = LocInfo();
+            locs[i].init(at.add(dir));
+        }
+    }
+    nearbyEnemyHP = 0;
+    for bot in Mem::nearbyEnemies {
+        if bot.type.damage > 0 {
+            nearbyEnemyHP += bot.health;
+        }
+        for loc in locs {
+            updateLoc(loc, bot);
+        }
+    }
+    nearbyFriendlyHP = rc.getHealth();
+    nearbyFriendlyDamage = 0;
+    for i in Mem::nearbyAllies {
+        if i.type.damage > 0 {
+            nearbyFriendlyHP += i.health;
+            let rubble = rc.senseRubble(i.location);
+            nearbyFriendlyDamage += (i.type.damage * 100) / (10 + rubble);
+        }
+    }
+
+    let best: LocInfo = null;
+    for loc in locs {
+        if loc != null {
+            if locBetter(best, loc) {
+                best = loc;
+            }
+        }
+    }
+
+
+    if best != null {
+        rc.setIndicatorString("SPAWN MICRO for " + ty + ": Damage: " + best.enemyDamage + ", rubble: " + best.rubble);
+        at.dirTo(best.loc)
+    } else {
+        let n: Direction = null;
+        n
+    }
+}
+
+fn combatMicro() throws GameActionException {
+    initMicro(rc.getType());
+    selfHealth = rc.getHealth();
+
+    if rc.isMovementReady() {
+        let n: LocInfo = null;
+        let locs: [LocInfo; 9] = [n,n,n,n,n,n,n,n,n];
+        let cloc: LocInfo = null;
+        let directions = allDirections();
+        for i in unroll 0..9 {
+            let dir = directions[i];
+            if dir == Direction::CENTER || rc.canMove(dir) {
+                locs[i] = LocInfo();
+                locs[i].init(at.add(dir));
+                if dir == Direction::CENTER {
+                    cloc = locs[i];
+                }
+            }
+        }
+        nearbyEnemyHP = 0;
+        for bot in Mem::nearbyEnemies {
+            if bot.type.damage > 0 {
+                nearbyEnemyHP += bot.health;
+            }
+            for loc in locs {
+                updateLoc(loc, bot);
+            }
+        }
+        nearbyFriendlyHP = rc.getHealth();
+        nearbyFriendlyDamage = 0;
+        for i in Mem::nearbyAllies {
+            if i.type.damage > 0 {
+                nearbyFriendlyHP += i.health;
+                let rubble = rc.senseRubble(i.location);
+                nearbyFriendlyDamage += (i.type.damage * 100) / (10 + rubble);
+            }
+        }
+
+        let best: LocInfo = cloc;
+        for loc in locs {
+            if loc != null {
+                if locBetter(best, loc) {
+                    best = loc;
+                }
+            }
+        }
+        rc.setIndicatorString("MOVE MICRO: Damage: " + best.enemyDamage + ", rubble: " + best.rubble);
+        if best == null {
+            println("ERROR! best should not be null, CENTER is always an option");
+        }
+        // We can attack before or after moving, do whichever one is better
+        let bestNow = cloc.bestEnemy;
+        let bestThen = best.bestEnemy;
+        if bestNow != null && unitBetter(bestThen, bestNow) {
+            if bestNow != null && rc.canAttack(bestNow.location) {
+                rc.attack(bestNow.location);
+            }
+        }
+        if best.loc != at {
+            rc.move(at.dirTo(best.loc));
+        }
+        if bestThen != null && rc.canAttack(bestThen.location) {
+            rc.attack(bestThen.location);
+        }
+    } else if rc.isActionReady() {
+        let best: RobotInfo = null;
+        for i in Mem::nearbyEnemies {
+            if rc.canAttack(i.location) {
+                if unitBetter(best, i) {
+                    best = i;
+                }
+            }
+        }
+        if best == null {
+            rc.setIndicatorString("ATTACK MICRO: idle");
+        } else {
+            rc.setIndicatorString("ATTACK MICRO: attacking " + best.type);
+            rc.setIndicatorLine(at, best.location, 255, 0, 0);
+            rc.attack(best.location);
+        }
+    }
+}

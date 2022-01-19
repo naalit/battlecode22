@@ -7,113 +7,36 @@ use RobotPlayer::rc;
 
 let target: MapLocation;
 let lastRetarget: MapLocation;
-// Another location that the pathfinding algorithm will try to stay close to
-let attractor: MapLocation;
-
-
-let closest_archon: MapLocation;
-fn findArchon() {
-    let loc = rc.getLocation();
-    for i in rc.senseNearbyRobots() {
-        if i.type == RobotType::ARCHON {
-            if closest_archon == null || i.location.distanceSquaredTo(loc) < closest_archon.distanceSquaredTo(loc) {
-                closest_archon = i.location;
-            }
-        }
-    }
-}
 
 // Greedy pathfinding - go in the lowest rubble direction that's strictly closer to the target
-fn targetMoveGreedy(exploring: bool): bool throws GameActionException {
+fn pathfindGreedy(): Direction throws GameActionException {
     let loc = rc.getLocation();
 
-    if (target == null || target == loc || (exploring && target == lastRetarget && rc.canSenseLocation(target)) || (exploring && rc.canSenseLocation(target) && !rc.onTheMap(target))) {
-        if exploring {
-            retarget();
-        } else {
-            return false;
-        }
-    }
-
-    rc.setIndicatorLine(loc, target, 0, 255, 0);
-
     let dir = loc.dirTo(target);
-
-    if closest_archon == null {
-        findArchon();
-    }
-    let too_close = closest_archon != null && loc.isWithinDistanceSquared(closest_archon, 2);
 
     // Try going around obstacles, first left, then right
     let options: [MapLocation] = [ loc.add(dir), loc.add(dir.rotateLeft()), loc.add(dir.rotateRight()),
         loc.add(dir.rotateLeft().rotateLeft()), loc.add(dir.rotateRight().rotateRight()) ];
     let best: MapLocation = null;
     let best_pass = 100;
-    let best_adist = 1000;
     let prev_dist2 = loc.distanceSquaredTo(target);
     for i in options {
-        // Don't occupy archon spawning spaces
-        if (closest_archon != null && !too_close && i.isWithinDistanceSquared(closest_archon, 2)) || !rc.canMove(loc.dirTo(i)) {
-            continue;
-        }
-
-        if i == target {
+        if i == target && rc.canMove(loc.dirTo(i)) {
             best = i;
             best_pass = -1;
-        } else if (too_close || i.isWithinDistanceSquared(target, prev_dist2 - 1)) {
-            let pass = 10000;
-            let dir = i.dirTo(target);
-            let locs: [MapLocation] = [ i.add(dir), i.add(dir.rotateLeft()), i.add(dir.rotateRight()),
-                i.add(dir.rotateLeft().rotateLeft()), i.add(dir.rotateRight().rotateRight()) ];
-            for i2 in locs {
-                if !rc.onTheMap(i2) {
-                    continue;
-                }
-                let r = rc.senseRubble(i2);
-                if r < pass {
-                    pass = r;
-                }
-            }
-            let totPass = pass + rc.senseRubble(i);
-            if totPass < best_pass || (totPass == best_pass && attractor != null && i.isWithinDistanceSquared(attractor, best_adist)) {
+        } else if i.isWithinDistanceSquared(target, prev_dist2 - 1) && rc.canMove(loc.dirTo(i)) {
+            let pass = rc.senseRubble(i);
+            if pass < best_pass {
                 best = i;
-                best_pass = totPass;
-                if attractor != null {
-                    best_adist = i.distanceSquaredTo(attractor);
-                }
+                best_pass = pass;
             }
         }
     }
-    // It's better to move in a bad direction than not move at all
-    if (best == null && rc.isMovementReady()) {
-        if (exploring) {
-            retarget();
-            return targetMoveGreedy(false);
-        }
-        // This isn't used right now, but we might want to try removing the others from options and adding this back in
-        // EDIT: it's about non-strictly-closer locations, but is probably never used, especially since we don't set exploring=false currently
-        // else {
-        //     let others = [ loc.add(dir.rotateLeft().rotateLeft()), loc.add(dir.rotateRight().rotateRight()) ];
-        //     for i in others {
-        //         // Don't occupy EC spawning spaces
-        //         if (closest_archon != null && i.isWithinDistanceSquared(closest_archon, 2)) || !rc.canMove(loc.dirTo(i)) {
-        //             continue;
-        //         }
-        //
-        //         if rc.senseRubble(i) > best_pass {
-        //             best = i;
-        //             best_pass = rc.senseRubble(i);
-        //         }
-        //     }
-        // }
-    }
-    if (best == null) {
-        false
+    if best != null {
+        loc.dirTo(best)
     } else {
-        dir = loc.dirTo(best);
-
-        rc.move(dir);
-        true
+        let n: Direction = null;
+        n
     }
 }
 
@@ -140,13 +63,13 @@ fn retarget() {
 }
 
 // BFS / modified Bellman-Ford pathfinding algorithm
-// This takes 4000-5000 bytecode for the whole thing
+// This takes 3000-4000 bytecode for the whole thing (probably)
 
 // Vision radius is 20 u^2
 // That's a 9x9 square, minus the corners, but we initialize the whole thing for easy coordinate calculation
 // (cost in cooldown (assuming movement cooldown = 10) to get here, direction to get here from the origin)
 let cache: [(i32, Direction); 81];
-let robots: [bool];
+let occupied: [bool];
 
 // Initialize the arrays
 fn pathStart() throws GameActionException {
@@ -158,25 +81,32 @@ fn pathStart() throws GameActionException {
     }
 
     // Store the positions of nearby robots in a lookup table so we can avoid them
-    robots = [; 81];
-    for r in Mem::nearbyRobotsMe {
+    occupied = [; 81];
+    for r in Mem::nearbyAllies {
         let x = r.location.x - at.x;
         let y = r.location.y - at.y;
         if x*x + y*y <= 20 {
-            let l = at.translate(x, y);
-            // rc.setIndicatorDot(l, 255, 0, 0);
             let i = (4 + x) * 9 + 4 + y;
-            robots[i] = true;
+            occupied[i] = true;
         }
     }
-    for r in Mem::nearbyRobotsThem {
+    for r in Mem::nearbyEnemies {
         let x = r.location.x - at.x;
         let y = r.location.y - at.y;
         if x*x + y*y <= 20 {
-            let l = at.translate(x, y);
-            // rc.setIndicatorDot(l, 255, 0, 0);
             let i = (4 + x) * 9 + 4 + y;
-            robots[i] = true;
+            occupied[i] = true;
+        }
+    }
+    // Also block the last couple locations we've been at to avoid oscillation
+    for l in lastLocs {
+        if l != null {
+            let x = l.x - at.x;
+            let y = l.y - at.y;
+            if x*x + y*y <= 20 {
+                let i = (4 + x) * 9 + 4 + y;
+                occupied[i] = true;
+            }
         }
     }
 
@@ -199,12 +129,10 @@ fn pathStart() throws GameActionException {
             if x*x + y*y != 0 {
                 let didx = (x+1)*3 + y + 1;
                 let dir = directions[didx];
-                // We don't allow the robot to move to the last position it was in to avoid most cycles
-                // Some still exist, but are usually broken by a passing robot pretty soon
-                if rc.canMove(dir) && dir != lastDir {
+                let i = (4 + x) * 9 + 4 + y;
+                if rc.canMove(dir) && !occupied[i] {
                     let loc = at.translate(x, y);
                     let baseRubble = rc.senseRubble(loc) + 10;
-                    let i = (4 + x) * 9 + 4 + y;
                     cache[i] = (baseRubble + rubble0, dir);
                 }
             }
@@ -217,28 +145,22 @@ let at: MapLocation;
 fn inline doLoc(x: i32, y: i32) throws GameActionException {
     let loc = at.translate(x, y);
     let baseIdx = (4 + x) * 9 + 4 + y;
-    if rc.onTheMap(loc) && !robots[baseIdx] {
-        let baseRubble = rc.senseRubble(loc);
-        if !lowPass && baseRubble >= 50 {
-            baseRubble *= 5;
-        }
-        baseRubble += 10;
-        let oldScore = cache[baseIdx].0;
-        let oldDir = cache[baseIdx].1;
-        let maxD = if x*x > y*y { x*x } else { y*y };
-        let toBeat = cache[baseIdx].0 - baseRubble;
+    if rc.onTheMap(loc) && !occupied[baseIdx] {
+        let baseRubble = rc.senseRubble(loc) + 10;
+        if lowPass || baseRubble < 50 {
+            let maxD = if x*x > y*y { x*x } else { y*y };
 
-        for dx in unroll -1..2 {
-            for dy in unroll -1..2 {
-                let x2 = x + dx;
-                let y2 = y + dy;
-                if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
-                    let i = (4 + x2) * 9 + 4 + y2;
-                    // let score = cache[i].0 + baseRubble;
-                    if cache[i].0 < toBeat {
-                        // rc.setIndicatorLine(loc, loc.translate(dx, dy), 0, 0, 127);
-                        cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
-                        toBeat = cache[i].0;
+            for dx in unroll -1..2 {
+                for dy in unroll -1..2 {
+                    let x2 = x + dx;
+                    let y2 = y + dy;
+                    // Only consider locations that are in previous layers (their max coordinate is less than this one)
+                    // this whole condition is evaluated at compile time of course
+                    if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
+                        let i = (4 + x2) * 9 + 4 + y2;
+                        if cache[i].0 + baseRubble < cache[baseIdx].0 {
+                            cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
+                        }
                     }
                 }
             }
@@ -250,6 +172,7 @@ fn inline doLoc(x: i32, y: i32) throws GameActionException {
 // This could be run multiple times to be more accurate
 // (this performs one iteration of Bellman-Ford, but in such an order than one iteration is pretty good)
 fn pathIter() throws GameActionException  {
+    // Visit each location in order of distance from the origin (mostly)
     let sides = [1, 3, 5, 7, 5];
     let offsets = [0, 0, 0, 0, 2];
     for layer in unroll 0..sides.len() {
@@ -313,15 +236,28 @@ fn pathFinish(from: MapLocation, to: MapLocation): Direction {
     bestDir
 }
 
-let lastDir: Direction = null;
 let lastTarget: MapLocation = null;
 let lowPass = false;
+
+define N_SAVED_LOCS = 3;
+let lastLocs: [MapLocation] = [; N_SAVED_LOCS];
+let lastLocIdx = 0;
+fn inline addLoc(loc: MapLocation) {
+    lastLocs[lastLocIdx] = loc;
+    lastLocIdx = (lastLocIdx + 1) % N_SAVED_LOCS;
+}
+fn inline clearLocs() {
+    for i in 0..N_SAVED_LOCS {
+        lastLocs[i] = null;
+    }
+    lastLocIdx = 0;
+}
 
 fn targetMove(exploring: bool, allowLowPass: bool): bool throws GameActionException {
     let loc = rc.getLocation();
     lowPass = allowLowPass;
 
-    if (target == null || target == loc || (exploring && target == lastRetarget && rc.canSenseLocation(target)) || (exploring && rc.canSenseLocation(target) && !rc.onTheMap(target))) {
+    if (target == null || target == loc || (exploring && rc.canSenseLocation(target)) || (exploring && rc.canSenseLocation(target) && !rc.onTheMap(target))) {
         if exploring {
             retarget();
         } else {
@@ -330,32 +266,38 @@ fn targetMove(exploring: bool, allowLowPass: bool): bool throws GameActionExcept
     }
 
     if target != lastTarget {
-        lastDir = null;
+        clearLocs();
     }
 
     rc.setIndicatorLine(loc, target, 0, 255, 0);
 
-    let btc = bytecodeNum();
-    let tStart = rc.getRoundNum();
-    pathStart();
-    let startBtc = bytecodeNum();
-    if rc.getRoundNum() != tStart { startBtc += rc.getType().bytecodeLimit; }
-    pathIter();
-    let iterBtc = bytecodeNum();
-    if rc.getRoundNum() != tStart { iterBtc += rc.getType().bytecodeLimit; }
-    let dir = pathFinish(loc, target);
-    let finishBtc = bytecodeNum();
-    if rc.getRoundNum() != tStart { finishBtc += rc.getType().bytecodeLimit; }
+    let dir = if bytecodeLeft() >= 4000 {
+        let btc = bytecodeNum();
+        let tStart = rc.getRoundNum();
+        pathStart();
+        let startBtc = bytecodeNum();
+        if rc.getRoundNum() != tStart { startBtc += rc.getType().bytecodeLimit; }
+        pathIter();
+        let iterBtc = bytecodeNum();
+        if rc.getRoundNum() != tStart { iterBtc += rc.getType().bytecodeLimit; }
+        let dir = pathFinish(loc, target);
+        let finishBtc = bytecodeNum();
+        if rc.getRoundNum() != tStart { finishBtc += rc.getType().bytecodeLimit; }
+        rc.setIndicatorString("PATHFINDING TOTAL BTC: " + (finishBtc - btc)
+            + ", start: " + (startBtc - btc)
+            + ", iter: " + (iterBtc - startBtc)
+            + ", finish: " + (finishBtc - iterBtc));
 
-    rc.setIndicatorString("PATHFINDING TOTAL BTC: " + (finishBtc - btc)
-        + ", start: " + (startBtc - btc)
-        + ", iter: " + (iterBtc - startBtc)
-        + ", finish: " + (finishBtc - iterBtc));
+        dir
+    } else {
+        rc.setIndicatorString("GREEDY PATHFINDING ENABLED");
+        pathfindGreedy()
+    };
 
     if dir != null {
         if rc.canMove(dir) {
             lastTarget = target;
-            lastDir = dir.opposite();
+            addLoc(loc);
             rc.move(dir);
             return true;
         } else {

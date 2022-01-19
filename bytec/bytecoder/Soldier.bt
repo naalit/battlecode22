@@ -278,7 +278,7 @@ fn runSoldier() throws GameActionException {
     // Go towards an enemy, but don't abandon the archon
     // just kidding abandon it as much as you want
     let protect = false;//archonInRange && closestArchon != null && protectTurns > 0 && rc.getRoundNum() > 40;
-    let lowPass = false;
+    let lowPass = true;
     if Mem::nearbyRobotsThem.len() > 0 {
         doMicro();
         return;
@@ -336,6 +336,7 @@ fn runSoldier() throws GameActionException {
             Paths::target = Mem::closestSoldier;
             Paths::lastRetarget = Mem::closestSoldier;
             lastSoldier = Mem::closestSoldier;
+            lowPass = false;
         }
     } else {
         Mem::addAvailableSoldier();
@@ -343,6 +344,7 @@ fn runSoldier() throws GameActionException {
             Paths::target = Mem::closestSoldier;
             Paths::lastRetarget = Mem::closestSoldier;
             lastSoldier = Mem::closestSoldier;
+            lowPass = false;
         }
     }
     if !protectStill && lastProtect != null {
@@ -350,7 +352,6 @@ fn runSoldier() throws GameActionException {
             Paths::target = null;
         }
         lastProtect = null;
-        lowPass = true;
     }
     Paths::targetMove(true, lowPass);
 }

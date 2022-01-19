@@ -1,0 +1,14 @@
+extern {
+    import battlecode.common.*;
+}
+
+use Common::*;
+use RobotPlayer::rc;
+
+fn preTurn() throws GameActionException {
+
+}
+
+fn turn() throws GameActionException {
+    
+}

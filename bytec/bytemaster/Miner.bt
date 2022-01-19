@@ -1,0 +1,204 @@
+extern {
+    import battlecode.common.*;
+}
+
+use Common::*;
+use RobotPlayer::rc;
+
+fn preTurn() throws GameActionException {
+    // Make sure to mine before we do anything else, in case maintain() and micro goes over on bytecode
+    tryMine();
+}
+
+let currentCorner = -1;
+fn turn() throws GameActionException {
+    Mem::addMinerCount();
+    Mem::minerPassiveCornerSearch();
+    if currentCorner != -1 {
+        if !Mem::minerPingCorner(currentCorner) {
+            currentCorner = -1;
+        }
+    }
+    if rc.isMovementReady() {
+        if !microMove() {
+            if closestLead != null {
+                Paths::target = closestLead;
+                Paths::targetMove(false, true);
+            } else if currentCorner != -1 {
+                Paths::target = Mem::cornerLocs[currentCorner];
+                Paths::targetMove(true, true);
+            } else {
+                currentCorner = Mem::minerClaimCorner();
+                if currentCorner != -1 {
+                    Paths::target = Mem::cornerLocs[currentCorner];
+                    Paths::targetMove(true, true);
+                } else {
+                    Paths::targetMove(true, true);
+                }
+            }
+        }
+    }
+    tryMine();
+}
+
+class LocInfo {
+    let loc: MapLocation;
+    let enemyDamage: i32;
+    let rubble: i32;
+    let leadDist: i32;
+    let adjacentLead: i32;
+
+    fn init(loc: MapLocation) throws GameActionException {
+        self.loc = loc;
+        self.rubble = rc.senseRubble(loc);
+        self.enemyDamage = 0;
+        self.leadDist = 10000;
+        self.adjacentLead = 0;
+    }
+}
+fn locBetter(old: LocInfo, new: LocInfo): bool {
+    if old == null { return true; }
+    if new.enemyDamage < old.enemyDamage { return true; }
+    if new.enemyDamage > old.enemyDamage { return false; }
+    if new.adjacentLead > old.adjacentLead { return true; }
+    if new.adjacentLead < old.adjacentLead { return false; }
+    if new.rubble <= old.rubble + 20 {
+        if new.leadDist * 10 + new.rubble < old.leadDist * 10 + old.rubble { return true; }
+        if new.leadDist * 10 + new.rubble > old.leadDist * 10 + old.rubble { return false; }
+    }
+    new.rubble < old.rubble
+}
+
+fn findSpawnSpace(): Direction throws GameActionException {
+    let n: LocInfo = null;
+    let locs: [LocInfo; 8] = [n,n,n,n,n,n,n,n];
+    for i in unroll 0..8 {
+        let dir = ALL_MOVE_DIRECTIONS[i];
+        let l = rc.getLocation().add(dir);
+        if dir == Direction::CENTER || rc.canBuildRobot(RobotType::MINER, dir) {
+            locs[i] = LocInfo();
+            locs[i].init(l);
+        }
+    }
+    for i in Mem::nearbyEnemies {
+        if i.type.damage > 0 {
+            for l in locs {
+                if l != null {
+                    if i.location.isWithinDistanceSquared(l.loc, i.type.actionRadiusSquared) {
+                        let rubble = rc.senseRubble(i.location);
+                        l.enemyDamage += (i.type.damage * 100) / (10 + rubble);
+                    }
+                }
+            }
+        }
+    }
+    for loc in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
+        for l in locs {
+            if l != null {
+                let d = max(abs(l.loc.x - loc.x), abs(l.loc.y - loc.y));
+                if d < l.leadDist {
+                    l.leadDist = d;
+                }
+                if d <= 2 {
+                    l.adjacentLead += rc.senseLead(loc);
+                }
+            }
+        }
+    }
+
+    let best: LocInfo = null;
+    for i in locs {
+        if i != null && locBetter(best, i) {
+            best = i;
+        }
+    }
+
+    if best != null {
+        rc.getLocation().dirTo(best.loc)
+    } else {
+        let n: Direction = null;
+        n
+    }
+}
+
+let closestLead: MapLocation = null;
+fn microMove(): bool throws GameActionException {
+    let at = rc.getLocation();
+    let n: LocInfo = null;
+    let locs: [LocInfo; 9] = [n,n,n,n,n,n,n,n,n];
+    let cloc: LocInfo = null;
+    let directions = allDirections();
+    for i in unroll 0..9 {
+        let dir = directions[i];
+        let l = at.add(dir);
+        if dir == Direction::CENTER || rc.canMove(dir) {
+            locs[i] = LocInfo();
+            locs[i].init(l);
+            if dir == Direction::CENTER {
+                cloc = locs[i];
+            }
+        }
+    }
+    for i in Mem::nearbyEnemies {
+        if i.type.damage > 0 {
+            for l in locs {
+                if l != null {
+                    if i.location.isWithinDistanceSquared(l.loc, i.type.actionRadiusSquared) {
+                        let rubble = rc.senseRubble(i.location);
+                        l.enemyDamage += (i.type.damage * 100) / (10 + rubble);
+                    }
+                }
+            }
+        }
+    }
+    closestLead = null;
+    let closestD = 100000;
+    for loc in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
+        let d0 = at.distanceSquaredTo(loc);
+        if d0 < closestD {
+            closestLead = loc;
+            closestD = d0;
+        }
+        for l in locs {
+            if l != null {
+                let d = max(abs(l.loc.x - loc.x), abs(l.loc.y - loc.y));
+                if d < l.leadDist {
+                    l.leadDist = d;
+                }
+                if d <= 2 {
+                    l.adjacentLead += rc.senseLead(loc);
+                }
+            }
+        }
+    }
+
+    let best: LocInfo = cloc;
+    for i in locs {
+        if i != null && locBetter(best, i) {
+            best = i;
+        }
+    }
+
+    if best != null && best.loc != at && (cloc.enemyDamage > 0 || best.adjacentLead > 0) {
+        rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
+        rc.move(at.dirTo(best.loc));
+        true
+    } else {
+        false
+    }
+}
+
+// Returns an adjacent location that we can continue mining
+fn tryMine() throws GameActionException {
+    let at = rc.getLocation();
+    for dir in allDirections() {
+        let loc = at.add(dir);
+        while rc.canMineGold(loc) {
+            rc.mineGold(loc);
+        }
+        // Leave 1 so it regenerates
+        while rc.canMineLead(loc) && rc.senseLead(loc) > 1 {
+            rc.mineLead(loc);
+        }
+    }
+}

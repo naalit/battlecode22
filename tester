@@ -1,6 +1,6 @@
 #!/usr/bin/fish
 
-bytec bytec/bytecoder src/bytecoder
+bytec bytec/common bytec/bytemaster src/bytemaster
 ./gradlew build > /dev/null
 
 if test (count $argv) -eq 0
@@ -19,8 +19,8 @@ end
 set iters 0
 for m in $MAPS
     if [ $m != "maptestsmall" ]
-        bash -c "./gradlew run -PteamA=bytecoder -PteamB=bytecoder3 -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
-        bash -c "./gradlew run -PteamA=bytecoder3 -PteamB=bytecoder -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
+        bash -c "./gradlew run -PteamA=bytecoder -PteamB=bytemaster -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
+        bash -c "./gradlew run -PteamA=bytemaster -PteamB=bytecoder -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
         set iters (math $iters + 1)
         if test $iters -gt 2
             while jobs -q

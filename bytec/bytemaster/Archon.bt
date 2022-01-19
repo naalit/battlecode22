@@ -1,0 +1,92 @@
+extern {
+    import battlecode.common.*;
+}
+
+use Common::*;
+use RobotPlayer::rc;
+
+// What number archon this is, i.e. how many archons go before it each turn
+let archonOrder = 0;
+let archonCount = 0;
+
+fn preTurn() throws GameActionException {
+
+}
+
+fn spawnMiner() throws GameActionException {
+    let dir = Miner::findSpawnSpace();
+    if dir != null {
+        rc.buildRobot(RobotType::MINER, dir);
+    }
+}
+
+fn spawnSoldier() throws GameActionException {
+    let dir = Combat::findSpawnSpace(RobotType::SOLDIER);
+    if dir != null {
+        rc.buildRobot(RobotType::SOLDIER, dir);
+    }
+}
+
+fn spawnSage() throws GameActionException {
+    let dir = Combat::findSpawnSpace(RobotType::SAGE);
+    if dir != null {
+        rc.buildRobot(RobotType::SAGE, dir);
+    }
+}
+
+fn turn() throws GameActionException {
+    if archonCount != rc.getArchonCount() {
+        archonCount = rc.getArchonCount();
+        archonOrder = rc.readSharedArray(0);
+        if archonOrder == rc.getArchonCount() - 1 {
+            rc.writeSharedArray(0, 0);
+        } else {
+            rc.writeSharedArray(0, archonOrder + 1);
+        }
+        rc.writeSharedArray(Mem::FRIENDLY_ARCHON_LOC + archonOrder, Mem::encodeLoc(rc.getLocation()));
+    }
+
+    if rc.getRoundNum() == 1 {
+        spawnMiner();
+    } else {
+        if archonOrder == 0 {
+            Mem::maintainMinerCorners();
+        }
+
+        let minerCount = Mem::getMinerCount();
+
+        if archonOrder == archonCount - 1 {
+            Mem::clearMinerCount();
+        }
+
+        // Don't let one Archon dominate
+        // They take turns spawning, or they can override the order if there's enough for each other archon to spawn a soldier to defend itself
+        if rc.getRoundNum() % rc.getArchonCount() == archonOrder
+            || rc.getTeamLeadAmount(rc.getTeam()) >= RobotType::MINER.buildCostLead * (rc.getArchonCount() - archonOrder) {
+            let nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2).len();
+            let targetMinerCount = (nLead - 1) * rc.getArchonCount(); // + (rc.getMapWidth() + rc.getMapHeight())/10;
+            if minerCount < targetMinerCount && (rc.getRoundNum() < 50 || Mem::nearbyEnemies.len() == 0) {
+                spawnMiner();
+            } else {
+                spawnSoldier();
+            }
+        }
+
+        if rc.isActionReady() {
+            // Try to repair a robot in range.
+            // The targeting logic picks the most important and vulnerable unit,
+            // so it works pretty well in this case too!
+            let bestUnit: RobotInfo = null;
+            for i in Mem::nearbyAllies {
+                if i.health <= i.type.health && rc.canRepair(i.location) {
+                    if Combat::unitBetter(bestUnit, i) {
+                        bestUnit = i;
+                    }
+                }
+            }
+            if bestUnit != null {
+                rc.repair(bestUnit.location);
+            }
+        }
+    }
+}
