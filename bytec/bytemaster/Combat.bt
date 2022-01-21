@@ -142,28 +142,48 @@ fn inline updateLoc(loc: LocInfo, unit: RobotInfo) {
     }
 }
 
-fn initMicro(ty: RobotType) throws GameActionException {
+fn microTarget(add_soldiers: bool): RobotInfo throws GameActionException {
+    at = rc.getLocation();
+    let best: RobotInfo = null;
+    for i in Mem::nearbyEnemies {
+        if add_soldiers && i.type.damage > 0 {
+            Mem::addSoldier(i.location);
+        }
+        if rc.canAttack(i.location) {
+            if unitBetter(best, i) {
+                best = i;
+            }
+        }
+    }
+    best
+}
+
+let cloc: LocInfo = null;
+fn microLoc(ty: RobotType, health: i32, include_center: bool, add_soldiers: bool): LocInfo throws GameActionException {
     at = rc.getLocation();
     selfDamage = ty.damage * 100;
     actionRadius = ty.actionRadiusSquared;
-}
-
-fn findSpawnSpace(ty: RobotType): Direction throws GameActionException {
-    initMicro(ty);
-    selfHealth = ty.health;
+    selfHealth = health;
 
     let n: LocInfo = null;
-    let locs: [LocInfo; 8] = [n,n,n,n,n,n,n,n];
-    for i in unroll 0..8 {
-        let dir = ALL_MOVE_DIRECTIONS[i];
-        if rc.canBuildRobot(ty, dir) {
+    let locs: [LocInfo; 9] = [n,n,n,n,n,n,n,n,n];
+    cloc = null;
+    let directions = allDirections();
+    for i in unroll 0..9 {
+        let dir = directions[i];
+        let l = at.add(dir);
+        if (include_center && dir == Direction::CENTER) || (!rc.canSenseRobotAtLocation(l) && rc.onTheMap(l)) {
             locs[i] = LocInfo();
-            locs[i].init(at.add(dir));
+            locs[i].init(l);
+            if dir == Direction::CENTER {
+                cloc = locs[i];
+            }
         }
     }
     nearbyEnemyHP = 0;
     for bot in Mem::nearbyEnemies {
-        if bot.type.damage > 0 {
+        if add_soldiers && bot.type.damage > 0 {
+            Mem::addSoldier(bot.location);
             nearbyEnemyHP += bot.health;
         }
         for loc in locs {
@@ -180,7 +200,7 @@ fn findSpawnSpace(ty: RobotType): Direction throws GameActionException {
         }
     }
 
-    let best: LocInfo = null;
+    let best: LocInfo = cloc;
     for loc in locs {
         if loc != null {
             if locBetter(best, loc) {
@@ -188,7 +208,11 @@ fn findSpawnSpace(ty: RobotType): Direction throws GameActionException {
             }
         }
     }
+    best
+}
 
+fn findSpawnSpace(ty: RobotType): Direction throws GameActionException {
+    let best = microLoc(ty, ty.health, false, false);
 
     if best != null {
         rc.setIndicatorString("SPAWN MICRO for " + ty + ": Damage: " + best.enemyDamage + ", rubble: " + best.rubble);
@@ -200,52 +224,8 @@ fn findSpawnSpace(ty: RobotType): Direction throws GameActionException {
 }
 
 fn combatMicro() throws GameActionException {
-    initMicro(rc.getType());
-    selfHealth = rc.getHealth();
-
     if rc.isMovementReady() {
-        let n: LocInfo = null;
-        let locs: [LocInfo; 9] = [n,n,n,n,n,n,n,n,n];
-        let cloc: LocInfo = null;
-        let directions = allDirections();
-        for i in unroll 0..9 {
-            let dir = directions[i];
-            if dir == Direction::CENTER || rc.canMove(dir) {
-                locs[i] = LocInfo();
-                locs[i].init(at.add(dir));
-                if dir == Direction::CENTER {
-                    cloc = locs[i];
-                }
-            }
-        }
-        nearbyEnemyHP = 0;
-        for bot in Mem::nearbyEnemies {
-            if bot.type.damage > 0 {
-                Mem::addSoldier(bot.location);
-                nearbyEnemyHP += bot.health;
-            }
-            for loc in locs {
-                updateLoc(loc, bot);
-            }
-        }
-        nearbyFriendlyHP = rc.getHealth();
-        nearbyFriendlyDamage = 0;
-        for i in Mem::nearbyAllies {
-            if i.type.damage > 0 {
-                nearbyFriendlyHP += i.health;
-                let rubble = rc.senseRubble(i.location);
-                nearbyFriendlyDamage += (i.type.damage * 100) / (10 + rubble);
-            }
-        }
-
-        let best: LocInfo = cloc;
-        for loc in locs {
-            if loc != null {
-                if locBetter(best, loc) {
-                    best = loc;
-                }
-            }
-        }
+        let best = microLoc(rc.getType(), rc.getHealth(), true, true);
         rc.setIndicatorString("MOVE MICRO: Damage: " + best.enemyDamage + ", rubble: " + best.rubble);
         if best == null {
             println("ERROR! best should not be null, CENTER is always an option");
@@ -265,17 +245,7 @@ fn combatMicro() throws GameActionException {
             rc.attack(bestThen.location);
         }
     } else if rc.isActionReady() {
-        let best: RobotInfo = null;
-        for i in Mem::nearbyEnemies {
-            if i.type.damage > 0 {
-                Mem::addSoldier(i.location);
-            }
-            if rc.canAttack(i.location) {
-                if unitBetter(best, i) {
-                    best = i;
-                }
-            }
-        }
+        let best = microTarget(true);
         if best == null {
             rc.setIndicatorString("ATTACK MICRO: idle");
         } else {

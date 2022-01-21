@@ -16,7 +16,7 @@ fn preTurn() throws GameActionException {
 
 fn spawnMiner() throws GameActionException {
     let dir = Miner::findSpawnSpace();
-    if dir != null {
+    if dir != null && rc.canBuildRobot(RobotType::MINER, dir) {
         Mem::addMinerCount();
         rc.buildRobot(RobotType::MINER, dir);
     }
@@ -41,7 +41,7 @@ fn spawnBuilder() throws GameActionException {
 
 fn spawnSoldier() throws GameActionException {
     let dir = Combat::findSpawnSpace(RobotType::SOLDIER);
-    if dir != null {
+    if dir != null && rc.canBuildRobot(RobotType::SOLDIER, dir) {
         Mem::addSoldierCount();
         rc.buildRobot(RobotType::SOLDIER, dir);
     }
@@ -49,7 +49,7 @@ fn spawnSoldier() throws GameActionException {
 
 fn spawnSage() throws GameActionException {
     let dir = Combat::findSpawnSpace(RobotType::SAGE);
-    if dir != null {
+    if dir != null && rc.canBuildRobot(RobotType::SAGE, dir) {
         rc.buildRobot(RobotType::SAGE, dir);
     }
 }
