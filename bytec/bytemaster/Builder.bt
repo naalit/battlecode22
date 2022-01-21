@@ -221,6 +221,25 @@ fn turn() throws GameActionException {
     }
 
     if canMove {
+        if Mem::buildInfo.shouldBuildWatchtower {
+            let closestSoldier = Mem::getClosestSoldier(rc.getLocation());
+            if closestSoldier != null {
+                Paths::target = closestSoldier;
+            } else if Mem::enemyArchons.len() > 0 {
+                let closest: MapLocation = null;
+                let closest_d = 100000;
+                for i in Mem::enemyArchons {
+                    let d = i.distanceSquaredTo(rc.getLocation());
+                    if d < closest_d {
+                        closest = i;
+                        closest_d = d;
+                    }
+                }
+                if closest != null {
+                    Paths::target = closest;
+                }
+            }
+        }
         Paths::targetMove(true, true);
     }
 

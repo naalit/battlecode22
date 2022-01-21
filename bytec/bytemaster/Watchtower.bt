@@ -9,14 +9,63 @@ fn preTurn() throws GameActionException {
 
 }
 
+let turnsSinceEnemy = 0;
 fn turn() throws GameActionException {
-    // TODO try moving
-    let best = Combat::microTarget(true);
-    if best == null {
-        rc.setIndicatorString("ATTACK MICRO: idle");
-    } else {
-        rc.setIndicatorString("ATTACK MICRO: attacking " + best.type);
-        rc.setIndicatorLine(rc.getLocation(), best.location, 255, 0, 0);
-        rc.attack(best.location);
+    if rc.getMode() == RobotMode::TURRET {
+        if Mem::nearbyEnemies.len() == 0 {
+            turnsSinceEnemy += 1;
+        } else {
+            turnsSinceEnemy = 0;
+        }
+        if turnsSinceEnemy >= 20 && rc.canTransform() {
+            rc.transform();
+            return;
+        }
+
+        let best = Combat::microTarget(true);
+        if best == null {
+            rc.setIndicatorString("ATTACK MICRO: idle");
+        } else {
+            rc.setIndicatorString("ATTACK MICRO: attacking " + best.type);
+            rc.setIndicatorLine(rc.getLocation(), best.location, 255, 0, 0);
+            rc.attack(best.location);
+        }
+    } else if rc.getMode() == RobotMode::PORTABLE {
+        let sawSoldier = false;
+        for i in Mem::nearbyEnemies {
+            if i.type.damage > 0 {
+                sawSoldier = true;
+                break;
+            }
+        }
+        if sawSoldier {
+            let best = Combat::microLoc(rc.getType(), rc.getHealth(), true, true);
+            let dir = rc.getLocation().dirTo(best.loc);
+            if dir != Direction::CENTER && rc.canMove(dir) {
+                rc.move(dir);
+            }
+            if rc.canTransform() {
+                rc.transform();
+            }
+        } else {
+            let closestSoldier = Mem::getClosestSoldier(rc.getLocation());
+            if closestSoldier != null {
+                Paths::target = closestSoldier;
+            } else if Mem::enemyArchons.len() > 0 {
+                let closest: MapLocation = null;
+                let closest_d = 100000;
+                for i in Mem::enemyArchons {
+                    let d = i.distanceSquaredTo(rc.getLocation());
+                    if d < closest_d {
+                        closest = i;
+                        closest_d = d;
+                    }
+                }
+                if closest != null {
+                    Paths::target = closest;
+                }
+            }
+            Paths::targetMove(true, false);
+        }
     }
 }
