@@ -12,17 +12,20 @@ let enemyArchons: [MapLocation] = [];
 let friendlyArchons: [MapLocation] = [];
 let lastFriendlyArchons = 0;
 let closestArchon: MapLocation = null;
+let buildInfo = BuildInfo();
 
 // 0: archon idx finding
 // 1-5: enemy archon list
-// 6:
+// 6: soldier count
 // 7-8: miner corner stuff
 // 9: miner count
 // 10-13: friendly archon locations
 // 14,15-30: enemy soldier locations (the first one is the current index)
+// 31: build information
 define ARCHON_IDX_LOC = 0;
 define ENEMY_ARCHON_LOC = 1;
 define ENEMY_ARCHON_LEN = 6;
+define SOLDIER_COUNT_LOC = 6;
 define MINER_CORNER_LOC = 7;
 define MINER_COUNT_LOC = 9;
 let FRIENDLY_ARCHON_LOC = 10;
@@ -31,6 +34,7 @@ define FRIENDLY_ARCHON_LEN = 4;
 // TODO fix this system or add proper constants or something
 // define ENEMY_SOLDIER_LOC = 15;
 // define ENEMY_SOLDIER_LEN = 16;
+define BUILD_INFO_LOC = 31;
 
 define ENEMY_SOLDIER_KEEP_TURNS = 2;
 
@@ -55,9 +59,11 @@ fn maintain() throws GameActionException {
         lastFriendlyArchons = rc.getArchonCount();
         friendlyArchons.clear();
         for i in 0..rc.getArchonCount() {
-            friendlyArchons.push(decodeLoc(rc.readSharedArray(FRIENDLY_ARCHON_LOC + 1)));
+            friendlyArchons.push(decodeLoc(rc.readSharedArray(FRIENDLY_ARCHON_LOC + i)));
         }
+        rc.setIndicatorString("FOUND ARCHONS: " + friendlyArchons.len());
     }
+    closestArchon = null;
     let closestArchonD = 10000;
     for i in friendlyArchons {
         let d = i.distanceSquaredTo(loc);
@@ -71,6 +77,60 @@ fn maintain() throws GameActionException {
     searchArchons();
 
     soldiersAdded = 0;
+}
+
+class BuildInfo {
+    // 0 or 1
+    let shouldBuildWatchtower: bool;
+    let shouldBuildLab: bool;
+    let changed: bool;
+
+    fn read() throws GameActionException {
+        let a = rc.readSharedArray(BUILD_INFO_LOC);
+        self.shouldBuildWatchtower = a & 0b10 != 0;
+        self.shouldBuildLab = a & 1 != 0;
+    }
+
+    fn writeBack() throws GameActionException {
+        if self.changed {
+            let a = 0;
+            if self.shouldBuildLab {
+                a |= 1;
+            }
+            if self.shouldBuildWatchtower {
+                a |= 0b10;
+            }
+            rc.writeSharedArray(BUILD_INFO_LOC, a);
+        }
+    }
+
+    fn queueLab() {
+        if !self.shouldBuildLab {
+            self.shouldBuildLab = true;
+            self.changed = true;
+        }
+    }
+
+    fn queueWatchtower() {
+        if !self.shouldBuildWatchtower {
+            self.shouldBuildWatchtower = true;
+            self.changed = true;
+        }
+    }
+
+    fn builtLab() {
+        if self.shouldBuildLab {
+            self.shouldBuildLab = false;
+            self.changed = true;
+        }
+    }
+    
+    fn builtWatchtower() {
+        if self.shouldBuildWatchtower {
+            self.shouldBuildWatchtower = false;
+            self.changed = true;
+        }
+    }
 }
 
 let enemySoldiers: [MapLocation] = [];
@@ -274,6 +334,16 @@ fn clearMinerCount() throws GameActionException {
 }
 fn addMinerCount() throws GameActionException {
     rc.writeSharedArray(MINER_COUNT_LOC, rc.readSharedArray(MINER_COUNT_LOC) + 1);
+}
+
+fn getSoldierCount(): i32 throws GameActionException {
+    rc.readSharedArray(SOLDIER_COUNT_LOC)
+}
+fn clearSoldierCount() throws GameActionException {
+    rc.writeSharedArray(SOLDIER_COUNT_LOC, 0);
+}
+fn addSoldierCount() throws GameActionException {
+    rc.writeSharedArray(SOLDIER_COUNT_LOC, rc.readSharedArray(MINER_COUNT_LOC) + 1);
 }
 
 fn readArchons() throws GameActionException {

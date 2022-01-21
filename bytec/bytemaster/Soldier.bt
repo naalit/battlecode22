@@ -11,6 +11,7 @@ fn preTurn() throws GameActionException {
 
 let wasTargetingArchon = false;
 fn turn() throws GameActionException {
+    Mem::addSoldierCount();
     let loc = rc.getLocation();
 
     if Mem::nearbyEnemies.len() > 0 {

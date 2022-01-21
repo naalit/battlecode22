@@ -200,7 +200,7 @@ fn microMove(): bool throws GameActionException {
                 for l in locs {
                     // Assume enemy soldiers we can't see could have moved 1 tile by now
                     if l != null && loc.isWithinDistanceSquared(l.loc, 20) {
-                        l.enemyDamage += 100;
+                        l.enemyDamage += 10;
                     }
                 }
             }
@@ -272,6 +272,7 @@ fn microMove(): bool throws GameActionException {
     if best != null && (cloc.enemyDamage > 0 || best.adjacentLead > 0) {
         if best.loc != at {
             rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
+            rc.setIndicatorLine(at, best.loc, 0, 0, 255);
             rc.move(at.dirTo(best.loc));
         } else {
             rc.setIndicatorString("MICRO STAY: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);

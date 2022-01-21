@@ -8,6 +8,7 @@ use RobotPlayer::rc;
 // What number archon this is, i.e. how many archons go before it each turn
 let archonOrder = 0;
 let archonCount = 0;
+let START_MINERS: [i32] = [3, 5, 6, 7];
 
 fn preTurn() throws GameActionException {
 
@@ -16,13 +17,32 @@ fn preTurn() throws GameActionException {
 fn spawnMiner() throws GameActionException {
     let dir = Miner::findSpawnSpace();
     if dir != null {
+        Mem::addMinerCount();
         rc.buildRobot(RobotType::MINER, dir);
+    }
+}
+
+fn spawnBuilder() throws GameActionException {
+    let best: Direction = null;
+    let best_lead = 1000;
+    for dir in ALL_MOVE_DIRECTIONS {
+        if rc.canBuildRobot(RobotType::BUILDER, dir) {
+            let lead = rc.senseLead(rc.getLocation().add(dir));
+            if lead < best_lead {
+                best = dir;
+                best_lead = lead;
+            }
+        }
+    }
+    if best != null {
+        rc.buildRobot(RobotType::BUILDER, best);
     }
 }
 
 fn spawnSoldier() throws GameActionException {
     let dir = Combat::findSpawnSpace(RobotType::SOLDIER);
     if dir != null {
+        Mem::addSoldierCount();
         rc.buildRobot(RobotType::SOLDIER, dir);
     }
 }
@@ -53,21 +73,23 @@ fn turn() throws GameActionException {
             Mem::maintainMinerCorners();
             Mem::maintainSoldiers();
         }
+        Mem::buildInfo.read();
 
         let minerCount = Mem::getMinerCount();
-
-        if archonOrder == archonCount - 1 {
-            Mem::clearMinerCount();
-        }
+        let soldierCount = Mem::getSoldierCount();
 
         // Don't let one Archon dominate
         // They take turns spawning, or they can override the order if there's enough for each other archon to spawn a soldier to defend itself
         if rc.getRoundNum() % rc.getArchonCount() == archonOrder
             || rc.getTeamLeadAmount(rc.getTeam()) >= RobotType::MINER.buildCostLead * (rc.getArchonCount() - archonOrder) {
-            let nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2).len();
-            let targetMinerCount = (nLead - 1) * rc.getArchonCount(); // + (rc.getMapWidth() + rc.getMapHeight())/10;
-            if minerCount < targetMinerCount && (rc.getRoundNum() < 50 || Mem::nearbyEnemies.len() == 0) {
+            let nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
+            let targetMinerCount = 6 + (rc.getMapWidth() + rc.getMapHeight())/10;
+            let startMinerCount = START_MINERS[archonCount];
+            if minerCount < targetMinerCount && (minerCount < startMinerCount || minerCount < soldierCount) {
                 spawnMiner();
+            } else if nLead < 10 && Mem::nearbyEnemies.len() == 0 {
+                // This builder will suicide
+                spawnBuilder();
             } else {
                 spawnSoldier();
             }
@@ -89,5 +111,11 @@ fn turn() throws GameActionException {
                 rc.repair(bestUnit.location);
             }
         }
+
+        if archonOrder == archonCount - 1 {
+            Mem::clearMinerCount();
+            Mem::clearSoldierCount();
+        }
+        Mem::buildInfo.writeBack();
     }
 }

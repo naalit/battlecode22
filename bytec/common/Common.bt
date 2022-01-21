@@ -58,6 +58,7 @@ extern enum RobotType {
 
     fn getDamage(lvl: i32): i32;
     fn getHealing(lvl: i32): i32;
+    fn getMaxHealth(lvl: i32): i32;
 
     // cont.
 }

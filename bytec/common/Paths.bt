@@ -271,7 +271,7 @@ fn targetMove(exploring: bool, allowLowPass: bool): bool throws GameActionExcept
 
     rc.setIndicatorLine(loc, target, 0, 255, 0);
 
-    let dir = if bytecodeLeft() >= 4000 {
+    let dir = if bytecodeLeft() >= 4800 {
         let btc = bytecodeNum();
         let tStart = rc.getRoundNum();
         pathStart();

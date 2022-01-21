@@ -10,5 +10,45 @@ fn preTurn() throws GameActionException {
 }
 
 fn turn() throws GameActionException {
+    Mem::buildInfo.read();
+
+    let loc = rc.getLocation();
+
+    if Mem::closestArchon != null && rc.canSenseLocation(Mem::closestArchon) {
+        let robot = rc.senseRobotAtLocation(Mem::closestArchon);
+        if robot != null && robot.health < robot.type.getMaxHealth(robot.level) {
+            rc.setIndicatorString("REPAIR MODE");
+            if rc.canRepair(robot.location) {
+                rc.repair(robot.location);
+                return;
+            } else if !robot.location.isWithinDistanceSquared(loc, RobotType::BUILDER.actionRadiusSquared) {
+                Paths::target = robot.location;
+                Paths::targetMove(false, true);
+                return;
+            }
+        }
+
+        if Mem::closestArchon.isWithinDistanceSquared(loc, 13) {
+            rc.setIndicatorString("SAC MODE");
+            // Sacrifice itself
+            if rc.senseLead(loc) == 0 {
+                rc.disintegrate();
+            } else {
+                for dir in ALL_MOVE_DIRECTIONS {
+                    let l = loc.add(dir);
+                    if Mem::closestArchon.isWithinDistanceSquared(l, 13) && rc.canMove(dir) && rc.senseLead(l) == 0 {
+                        rc.move(dir);
+                        return;
+                    }
+                }
+            }
+        }
+        rc.setIndicatorString("BUILD MODE - NOTHING ELSE");
+    } else {
+        // rc.setIndicatorString("BUILD MODE - NO ARCHON");
+    }
     
+    Paths::targetMove(true, true);
+
+    Mem::buildInfo.writeBack();
 }
