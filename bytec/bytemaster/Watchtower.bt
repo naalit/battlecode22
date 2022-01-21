@@ -10,5 +10,13 @@ fn preTurn() throws GameActionException {
 }
 
 fn turn() throws GameActionException {
-    
+    // TODO try moving
+    let best = Combat::microTarget(true);
+    if best == null {
+        rc.setIndicatorString("ATTACK MICRO: idle");
+    } else {
+        rc.setIndicatorString("ATTACK MICRO: attacking " + best.type);
+        rc.setIndicatorLine(rc.getLocation(), best.location, 255, 0, 0);
+        rc.attack(best.location);
+    }
 }

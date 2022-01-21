@@ -182,21 +182,25 @@ fn microLoc(ty: RobotType, health: i32, include_center: bool, add_soldiers: bool
     }
     nearbyEnemyHP = 0;
     for bot in Mem::nearbyEnemies {
-        if add_soldiers && bot.type.damage > 0 {
-            Mem::addSoldier(bot.location);
-            nearbyEnemyHP += bot.health;
-        }
-        for loc in locs {
-            updateLoc(loc, bot);
+        if rc.canSenseLocation(bot.location) {
+            if add_soldiers && bot.type.damage > 0 {
+                Mem::addSoldier(bot.location);
+                nearbyEnemyHP += bot.health;
+            }
+            for loc in locs {
+                updateLoc(loc, bot);
+            }
         }
     }
     nearbyFriendlyHP = rc.getHealth();
     nearbyFriendlyDamage = 0;
     for i in Mem::nearbyAllies {
-        if i.type.damage > 0 {
-            nearbyFriendlyHP += i.health;
-            let rubble = rc.senseRubble(i.location);
-            nearbyFriendlyDamage += (i.type.damage * 100) / (10 + rubble);
+        if rc.canSenseLocation(i.location) {
+            if i.type.damage > 0 {
+                nearbyFriendlyHP += i.health;
+                let rubble = rc.senseRubble(i.location);
+                nearbyFriendlyDamage += (i.type.damage * 100) / (10 + rubble);
+            }
         }
     }
 

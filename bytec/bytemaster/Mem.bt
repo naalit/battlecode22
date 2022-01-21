@@ -22,6 +22,7 @@ let buildInfo = BuildInfo();
 // 10-13: friendly archon locations
 // 14,15-30: enemy soldier locations (the first one is the current index)
 // 31: build information
+// 32: income this turn (average income is computed by each archon)
 define ARCHON_IDX_LOC = 0;
 define ENEMY_ARCHON_LOC = 1;
 define ENEMY_ARCHON_LEN = 6;
@@ -35,6 +36,7 @@ define FRIENDLY_ARCHON_LEN = 4;
 // define ENEMY_SOLDIER_LOC = 15;
 // define ENEMY_SOLDIER_LEN = 16;
 define BUILD_INFO_LOC = 31;
+define INCOME_LOC = 32;
 
 define ENEMY_SOLDIER_KEEP_TURNS = 2;
 
@@ -131,6 +133,29 @@ class BuildInfo {
             self.changed = true;
         }
     }
+}
+
+let lastLead = 0;
+let lastIncome = 0;
+fn resetIncome() throws GameActionException {
+    // When we spend money, we subtract that amount from the stored income
+    // Then this sees it and adjusts lastLead accordingly
+    let reportedIncome = rc.readSharedArray(INCOME_LOC);
+    // The positive amount of lead spent last turn
+    let spent = lastIncome - reportedIncome;
+    lastLead -= spent;
+
+    let curLead = rc.getTeamLeadAmount(rc.getTeam());
+    let income = curLead - lastLead;
+    lastIncome = income;
+    rc.writeSharedArray(INCOME_LOC, income);
+}
+fn readIncome(): i32 throws GameActionException {
+    rc.readSharedArray(INCOME_LOC)
+}
+fn spend(lead: i32) throws GameActionException {
+    let old = rc.readSharedArray(INCOME_LOC);
+    rc.writeSharedArray(INCOME_LOC, old - lead);
 }
 
 let enemySoldiers: [MapLocation] = [];

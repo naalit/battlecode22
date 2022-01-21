@@ -170,7 +170,7 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
         let existingPower = 0;
         let tx = loc.x - at.x;
         let ty = loc.y - at.y;
-        if tx*ty + ty*ty <= 20 {
+        if tx*tx + ty*ty <= 20 {
             existingPower = miningPowers[(tx + 4) * 9 + 4 + ty];
         }
         let lead = rc.senseLead(loc);

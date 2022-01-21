@@ -15,6 +15,9 @@ fn preTurn() throws GameActionException {
 }
 
 fn spawnMiner() throws GameActionException {
+    if lead < RobotType::MINER.buildCostLead {
+        return;
+    }
     let dir = Miner::findSpawnSpace();
     if dir != null && rc.canBuildRobot(RobotType::MINER, dir) {
         Mem::addMinerCount();
@@ -23,6 +26,20 @@ fn spawnMiner() throws GameActionException {
 }
 
 fn spawnBuilder() throws GameActionException {
+    if lead < RobotType::BUILDER.buildCostLead {
+        return;
+    }
+    let dir = Builder::findSpawnSpace();
+    if dir != null && rc.canBuildRobot(RobotType::BUILDER, dir) {
+        Mem::addMinerCount();
+        rc.buildRobot(RobotType::BUILDER, dir);
+    }
+}
+
+fn spawnSuicideBuilder() throws GameActionException {
+    if lead < RobotType::BUILDER.buildCostLead {
+        return;
+    }
     let best: Direction = null;
     let best_lead = 1000;
     for dir in ALL_MOVE_DIRECTIONS {
@@ -40,6 +57,9 @@ fn spawnBuilder() throws GameActionException {
 }
 
 fn spawnSoldier() throws GameActionException {
+    if lead < RobotType::SOLDIER.buildCostLead {
+        return;
+    }
     let dir = Combat::findSpawnSpace(RobotType::SOLDIER);
     if dir != null && rc.canBuildRobot(RobotType::SOLDIER, dir) {
         Mem::addSoldierCount();
@@ -54,6 +74,20 @@ fn spawnSage() throws GameActionException {
     }
 }
 
+let incomes: [i32] = [; 10];
+let incomeIdx = 0;
+fn averageIncome(): i32 throws GameActionException {
+    let income = Mem::readIncome();
+    incomes[incomeIdx] = income;
+    incomeIdx = (incomeIdx + 1) % incomes.len();
+    let sum = 0;
+    for i in incomes {
+        sum += i;
+    }
+    sum / incomes.len()
+}
+let builderTurns = 0;
+let lead = 0;
 fn turn() throws GameActionException {
     if archonCount != rc.getArchonCount() {
         archonCount = rc.getArchonCount();
@@ -72,24 +106,49 @@ fn turn() throws GameActionException {
         if archonOrder == 0 {
             Mem::maintainMinerCorners();
             Mem::maintainSoldiers();
+            Mem::resetIncome();
         }
         Mem::buildInfo.read();
 
         let minerCount = Mem::getMinerCount();
         let soldierCount = Mem::getSoldierCount();
+        let income = averageIncome();
+        lead = rc.getTeamLeadAmount(rc.getTeam());
+
+        let needsBuilder = false;
+        builderTurns += 1;
+        if income >= 30
+            && (Mem::buildInfo.shouldBuildWatchtower || builderTurns >= 30)
+            && minerCount > 3
+            && Mem::nearbyEnemies.len() == 0
+        {
+            if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
+                builderTurns = 0;
+                needsBuilder = true;
+            } else {
+                lead -= 150;
+            }
+            Mem::buildInfo.queueWatchtower();
+        } else if income <= 10 && Mem::buildInfo.shouldBuildWatchtower {
+            Mem::buildInfo.builtWatchtower();
+        }
 
         // Don't let one Archon dominate
         // They take turns spawning, or they can override the order if there's enough for each other archon to spawn a soldier to defend itself
         if rc.getRoundNum() % rc.getArchonCount() == archonOrder
-            || rc.getTeamLeadAmount(rc.getTeam()) >= RobotType::MINER.buildCostLead * (rc.getArchonCount() - archonOrder) {
+            || lead >= RobotType::MINER.buildCostLead * (rc.getArchonCount() - archonOrder) {
             let nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
             let targetMinerCount = 6 + (rc.getMapWidth() + rc.getMapHeight())/10;
-            let startMinerCount = START_MINERS[archonCount];
-            if minerCount < targetMinerCount && (minerCount < startMinerCount || minerCount < soldierCount) {
-                spawnMiner();
-            } else if nLead < 10 && Mem::nearbyEnemies.len() == 0 {
-                // This builder will suicide
+            let startMinerCount = START_MINERS[archonCount - 1];
+            if needsBuilder {
+                rc.setIndicatorString("NORMAL BUILDER");
                 spawnBuilder();
+            } else if minerCount < targetMinerCount && (minerCount < startMinerCount || minerCount < soldierCount) {
+                spawnMiner();
+            } else if ((nLead < 10 && rc.getRoundNum() < 100) || rc.getHealth() <= 400) && Mem::nearbyEnemies.len() == 0 {
+                // This builder will suicide after possibly healing the archon
+                rc.setIndicatorString("SUICIDE BUILDER");
+                spawnSuicideBuilder();
             } else {
                 spawnSoldier();
             }
@@ -100,6 +159,7 @@ fn turn() throws GameActionException {
             // The targeting logic picks the most important and vulnerable unit,
             // so it works pretty well in this case too!
             let bestUnit: RobotInfo = null;
+            Combat::at = rc.getLocation();
             for i in Mem::nearbyAllies {
                 if i.health < i.type.health && rc.canRepair(i.location) {
                     if Combat::unitBetter(bestUnit, i) {
@@ -112,6 +172,10 @@ fn turn() throws GameActionException {
             }
         }
 
+        let spent = lead - rc.getTeamLeadAmount(rc.getTeam());
+        if spent > 0 {
+            Mem::spend(spent);
+        }
         if archonOrder == archonCount - 1 {
             Mem::clearMinerCount();
             Mem::clearSoldierCount();
