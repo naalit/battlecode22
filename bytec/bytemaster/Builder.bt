@@ -11,10 +11,9 @@ fn preTurn() throws GameActionException {
 
 fn inline repairBetter(best: RobotInfo, bot: RobotInfo): bool {
     if bot != null {
-        // Prioritise robots in prototype mode
-        bot.mode == RobotMode::PROTOTYPE || (bot.mode == RobotMode::TURRET && (best == null || best.mode == RobotMode::PROTOTYPE))
+        // Prioritise robots in prototype mode, but abandon if its health is less than 50% because it's probably being destroyed too quickly
+        (bot.mode == RobotMode::PROTOTYPE && bot.health > bot.type.health / 2) || (bot.mode == RobotMode::TURRET && (best == null || best.mode == RobotMode::PROTOTYPE))
         && bot.health < bot.type.getMaxHealth(bot.level)
-        && bot.location.isWithinDistanceSquared(Combat::at, RobotType::BUILDER.actionRadiusSquared)
         && Combat::unitBetter(best, bot)
     } else {
         false
@@ -26,12 +25,14 @@ class LocInfo {
     let enemyDamage: i32;
     let rubble: i32;
     let repairTarget: RobotInfo;
+    let upgradeTarget: RobotInfo;
 
     fn init(loc: MapLocation) throws GameActionException {
         self.loc = loc;
         self.rubble = rc.senseRubble(loc);
         self.enemyDamage = 0;
         self.repairTarget = null;
+        self.upgradeTarget = null;
     }
 }
 fn locBetter(old: LocInfo, new: LocInfo): bool {
@@ -46,8 +47,6 @@ fn locBetter(old: LocInfo, new: LocInfo): bool {
     new.rubble < old.rubble
 }
 
-let towerUpgrade: RobotInfo = null;
-let towerRubble = 10000;
 let cloc: LocInfo = null;
 let existsDamage = false;
 fn microLoc(include_center: bool, include_others: bool): LocInfo throws GameActionException {
@@ -56,7 +55,7 @@ fn microLoc(include_center: bool, include_others: bool): LocInfo throws GameActi
     existsDamage = false;
     let n: LocInfo = null;
     towerUpgrade = null;
-    towerRubble = 10000;
+    let towerRubble = 10000;
     let locs: [LocInfo; 9] = [n,n,n,n,n,n,n,n,n];
     cloc = null;
     let directions = allDirections();
@@ -103,14 +102,16 @@ fn microLoc(include_center: bool, include_others: bool): LocInfo throws GameActi
     for bot in Mem::nearbyAllies {
         for l in locs {
             if l != null {
-                if repairBetter(l.repairTarget, bot) {
-                    l.repairTarget = bot;
-                }
-                if bot.type == RobotType::WATCHTOWER && bot.mode == RobotMode::TURRET && bot.level == 1 {
-                    let rubble = rc.senseRubble(bot.location);
-                    if rubble < towerRubble {
-                        towerUpgrade = bot;
-                        towerRubble = rubble;
+                if bot.location.isWithinDistanceSquared(l.loc, RobotType::BUILDER.actionRadiusSquared) {
+                    if repairBetter(l.repairTarget, bot) {
+                        l.repairTarget = bot;
+                    }
+                    if bot.type == RobotType::WATCHTOWER && bot.mode == RobotMode::TURRET && bot.level == 1 {
+                        let rubble = rc.senseRubble(bot.location);
+                        if rubble < towerRubble {
+                            l.upgradeTarget = bot;
+                            towerRubble = rubble;
+                        }
                     }
                 }
             }
@@ -139,9 +140,10 @@ fn findSpawnSpace(): Direction throws GameActionException {
     }
 }
 
+let towerUpgrade: RobotInfo = null;
 let bestRepair: RobotInfo = null;
 fn microMove(): bool throws GameActionException {
-    let best = microLoc(true, false);
+    let best = microLoc(true, rc.isMovementReady());
     let at = rc.getLocation();
 
     if rc.isMovementReady() {
@@ -154,10 +156,12 @@ fn microMove(): bool throws GameActionException {
                 rc.setIndicatorString("MICRO STAY: damage: " + best.enemyDamage + ", repair?: " + (best.repairTarget != null));
             }
             bestRepair = best.repairTarget;
+            towerUpgrade = best.upgradeTarget;
             true
         } else {
             rc.setIndicatorString("NO MICRO: damage: " + best.enemyDamage + ", repair?: " + (best.repairTarget != null));
             bestRepair = cloc.repairTarget;
+            towerUpgrade = cloc.upgradeTarget;
             false
         }
     } else {
@@ -188,54 +192,56 @@ fn turn() throws GameActionException {
         }
     }
 
-    if Mem::buildInfo.shouldBuildLab && Mem::nearbyEnemies.len() == 0 {
-        let nearbyAllies = Mem::nearbyAllies.len();
-        if Mem::nearbyAllies.len() < 10 {
-            let best: Direction = null;
-            let bestRubble = 10000;
-            for dir in ALL_MOVE_DIRECTIONS {
-                if rc.canBuildRobot(RobotType::LABORATORY, dir) {
-                    let rubble = rc.senseRubble(loc.add(dir));
-                    if rubble < bestRubble {
-                        bestRubble = rubble;
-                        best = dir;
+    if bestRepair == null {
+        if Mem::buildInfo.shouldBuildLab && Mem::nearbyEnemies.len() == 0 {
+            let nearbyAllies = Mem::nearbyAllies.len();
+            if Mem::nearbyAllies.len() < 10 {
+                let best: Direction = null;
+                let bestRubble = 10000;
+                for dir in ALL_MOVE_DIRECTIONS {
+                    if rc.canBuildRobot(RobotType::LABORATORY, dir) {
+                        let rubble = rc.senseRubble(loc.add(dir));
+                        if rubble < bestRubble {
+                            bestRubble = rubble;
+                            best = dir;
+                        }
+                    }
+                }
+                if best != null {
+                    rc.buildRobot(RobotType::LABORATORY, best);
+                    Mem::buildInfo.builtLab();
+                    Mem::spend(RobotType::LABORATORY.buildCostLead);
+                    Mem::addLabCount();
+                }
+            }
+        } else if bytecodeLeft() > 3000 && existsDamage && Mem::buildInfo.shouldBuildWatchtower && rc.getTeamLeadAmount(rc.getTeam()) >= RobotType::WATCHTOWER.buildCostLead {
+            if towerUpgrade != null && rc.canMutate(towerUpgrade.location) {
+                rc.mutate(towerUpgrade.location);
+                Mem::spend(RobotType::WATCHTOWER.getLeadMutateCost(towerUpgrade.level + 1));
+            } else {
+                let spot = Combat::microLoc(RobotType::WATCHTOWER, 1, true, RobotType::WATCHTOWER.health, false, false);
+                if spot != null {
+                    let dir = rc.getLocation().dirTo(spot.loc);
+                    if spot.rubble < 40 && rc.canBuildRobot(RobotType::WATCHTOWER, dir) {
+                        rc.buildRobot(RobotType::WATCHTOWER, dir);
+                        Mem::buildInfo.builtWatchtower();
+                        Mem::spend(RobotType::WATCHTOWER.buildCostLead);
                     }
                 }
             }
-            if best != null {
-                rc.buildRobot(RobotType::LABORATORY, best);
-                Mem::buildInfo.builtLab();
-                Mem::spend(RobotType::LABORATORY.buildCostLead);
-                Mem::addLabCount();
-            }
-        }
-    } else if bytecodeLeft() > 3000 && existsDamage && Mem::buildInfo.shouldBuildWatchtower && rc.getTeamLeadAmount(rc.getTeam()) >= RobotType::WATCHTOWER.buildCostLead {
-        if towerUpgrade != null && rc.canMutate(towerUpgrade.location) {
-            rc.mutate(towerUpgrade.location);
-            Mem::spend(RobotType::WATCHTOWER.getLeadMutateCost(towerUpgrade.level + 1));
-        } else {
-            let spot = Combat::microLoc(RobotType::WATCHTOWER, 1, true, RobotType::WATCHTOWER.health, false, false);
-            if spot != null {
-                let dir = rc.getLocation().dirTo(spot.loc);
-                if spot.rubble < 40 && rc.canBuildRobot(RobotType::WATCHTOWER, dir) {
-                    rc.buildRobot(RobotType::WATCHTOWER, dir);
-                    Mem::buildInfo.builtWatchtower();
-                    Mem::spend(RobotType::WATCHTOWER.buildCostLead);
-                }
-            }
-        }
-    } else if bestRepair == null && Mem::closestArchon != null && rc.getRoundNum() < 100 && rc.canSenseLocation(Mem::closestArchon) {
-        if Mem::closestArchon.isWithinDistanceSquared(loc, 13) {
-            rc.setIndicatorString("SUICIDE MODE");
-            // Sacrifice itself
-            if rc.senseLead(loc) == 0 {
-                rc.disintegrate();
-            } else {
-                for dir in ALL_MOVE_DIRECTIONS {
-                    let l = loc.add(dir);
-                    if Mem::closestArchon.isWithinDistanceSquared(l, 13) && rc.canMove(dir) && rc.senseLead(l) == 0 {
-                        rc.move(dir);
-                        return;
+        } else if Mem::closestArchon != null && rc.getRoundNum() < 100 && rc.canSenseLocation(Mem::closestArchon) {
+            if Mem::closestArchon.isWithinDistanceSquared(loc, 13) {
+                rc.setIndicatorString("SUICIDE MODE");
+                // Sacrifice itself
+                if rc.senseLead(loc) == 0 {
+                    rc.disintegrate();
+                } else {
+                    for dir in ALL_MOVE_DIRECTIONS {
+                        let l = loc.add(dir);
+                        if Mem::closestArchon.isWithinDistanceSquared(l, 13) && rc.canMove(dir) && rc.senseLead(l) == 0 {
+                            rc.move(dir);
+                            return;
+                        }
                     }
                 }
             }

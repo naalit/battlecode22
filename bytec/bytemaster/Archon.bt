@@ -8,7 +8,7 @@ use RobotPlayer::rc;
 // What number archon this is, i.e. how many archons go before it each turn
 let archonOrder = 0;
 let archonCount = 0;
-let START_MINERS: [i32] = [3, 5, 6, 7];
+let START_MINERS: [i32] = [3, 4, 6, 7];
 
 fn preTurn() throws GameActionException {
 
@@ -84,6 +84,7 @@ fn averageIncome(): i32 throws GameActionException {
     for i in incomes {
         sum += i;
     }
+    rc.setIndicatorString("Income this turn: " + income + ", average income: " + sum / incomes.len());
     sum / incomes.len()
 }
 let builderTurns = 0;
@@ -117,7 +118,7 @@ fn turn() throws GameActionException {
 
         let needsBuilder = false;
         builderTurns += 1;
-        if income >= 30
+        if income >= 8
             && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab || builderTurns >= 30)
             && minerCount > 3
             && Mem::nearbyEnemies.len() == 0
@@ -139,7 +140,7 @@ fn turn() throws GameActionException {
                 }
                 Mem::buildInfo.queueWatchtower();
             }
-        } else if income <= 10 && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab) {
+        } else if income <= 5 && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab) {
             Mem::buildInfo.builtWatchtower();
             Mem::buildInfo.builtLab();
         }
@@ -149,16 +150,16 @@ fn turn() throws GameActionException {
         if rc.getRoundNum() % rc.getArchonCount() == archonOrder
             || lead >= RobotType::MINER.buildCostLead * (rc.getArchonCount() - archonOrder) {
             let nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
-            let targetMinerCount = 6 + (rc.getMapWidth() + rc.getMapHeight())/10;
+            let targetMinerCount = 6 + (rc.getMapWidth() + rc.getMapHeight())/20;
             let startMinerCount = START_MINERS[archonCount - 1];
             if needsBuilder {
-                rc.setIndicatorString("NORMAL BUILDER");
+                // rc.setIndicatorString("NORMAL BUILDER");
                 spawnBuilder();
             } else if minerCount < targetMinerCount && (minerCount < startMinerCount || minerCount < soldierCount) {
                 spawnMiner();
-            } else if ((nLead < 10 && rc.getRoundNum() < 100) || rc.getHealth() <= 400) && Mem::nearbyEnemies.len() == 0 {
+            } else if ((nLead < 6 && rc.getRoundNum() < 100) || rc.getHealth() <= 400) && Mem::nearbyEnemies.len() == 0 {
                 // This builder will suicide after possibly healing the archon
-                rc.setIndicatorString("SUICIDE BUILDER");
+                // rc.setIndicatorString("SUICIDE BUILDER");
                 spawnSuicideBuilder();
             } else if rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold {
                 spawnSage();

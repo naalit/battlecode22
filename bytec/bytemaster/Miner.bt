@@ -185,8 +185,9 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
                     l.leadDist = d;
                 }
                 if d <= 1 {
-                    // The proportion of the lead that this miner would mine
-                    l.adjacentLead += lead * (500 / (10 + l.rubble)) / (500 / (10 + l.rubble) + existingPower);
+                    // The amount of lead that this miner would actually mine in 10 turns, assuming it mines only this tile and so do others
+                    let ourPower = (500 / (10 + l.rubble));
+                    l.adjacentLead = min(ourPower, l.adjacentLead + lead * ourPower / (ourPower + existingPower));
                 }
             }
         }

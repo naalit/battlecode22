@@ -16,18 +16,17 @@ function cleanup_jobs -s SIGINT
     echo 'done'
 end
 
-set iters 0
+function run_match
+    while test (count (jobs -p)) -gt 5
+        sleep 1
+    end
+    bash -c "./gradlew run -PteamA=$argv[1] -PteamB=$argv[2] -Pmaps=$argv[3] 2> /dev/null | grep 'wins' | sed 's/wins/wins on $argv[3]/g'" &
+end
+
 for m in $MAPS
-    if [ $m != "maptestsmall" ]
-        bash -c "./gradlew run -PteamA=bytecoder -PteamB=bytemaster -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
-        bash -c "./gradlew run -PteamA=bytemaster -PteamB=bytecoder -Pmaps=$m 2> /dev/null | grep 'wins' | sed 's/wins/wins on $m/g'" &
-        set iters (math $iters + 1)
-        if test $iters -gt 2
-            while jobs -q
-                sleep 1
-            end
-            set iters 0
-        end
+    if [ $m != "maptestsmall" ] && [ $m != "newdoubledoors" ]
+        run_match bytecoder bytemaster $m
+        run_match bytemaster bytecoder $m
     end
 end
 

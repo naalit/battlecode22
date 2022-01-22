@@ -59,30 +59,25 @@ fn unitBetter(old: RobotInfo, new: RobotInfo): bool {
         LABORATORY => 1,
     };
 
-    if old == null {
-        true
-    } else if priority(new.type) > priority(old.type) {
-        true
-    } else if priority(new.type) == priority(old.type) {
-        // Pick the lowest hp to kill more units more quickly, which is better than just doing damage
-        if new.health < old.health {
-            true
-        } else if new.health == old.health {
-            // Target the one closest to the Archon if there is one
-            if Mem::closestArchon != null && new.location.isWithinDistanceSquared(Mem::closestArchon, min(20, Mem::closestArchon.distanceSquaredTo(old.location))) {
-                true
-            // Otherwise just pick the closest one
-            } else if Mem::closestArchon == null {
-                new.location.isWithinDistanceSquared(at, at.distanceSquaredTo(old.location))
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    } else {
-        false
-    }
+    if old == null { return true; }
+    if priority(new.type) > priority(old.type) { return true; }
+    if priority(new.type) < priority(old.type) { return false; }
+    let dNew = damageDone(rc.getType(), rc.getLevel(), new);
+    let dOld = damageDone(rc.getType(), rc.getLevel(), old);
+    if dNew > dOld { return true; }
+    if dNew < dOld { return false; }
+    if new.health < old.health { return true; }
+    if new.health > old.health { return false; }
+
+    // Target the one closest to the Archon if there is one
+    // if Mem::closestArchon != null && new.location.isWithinDistanceSquared(Mem::closestArchon, min(20, Mem::closestArchon.distanceSquaredTo(old.location))) {
+    //     true
+    // Otherwise just pick the closest one
+    // } else if Mem::closestArchon == null {
+    new.location.isWithinDistanceSquared(at, at.distanceSquaredTo(old.location)  - 1)
+    // } else {
+    //     false
+    // }
 }
 fn locBetter(old: LocInfo, new: LocInfo): bool {
     if old == null {

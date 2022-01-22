@@ -149,6 +149,7 @@ fn resetIncome() throws GameActionException {
 
     let curLead = rc.getTeamLeadAmount(rc.getTeam());
     let income = curLead - lastLead;
+    lastLead = curLead;
     // this can happen when the first archon dies and it doesn't get reset correctly
     if income < 0 {
         income = 0;
