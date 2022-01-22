@@ -188,6 +188,80 @@ fn pathIter() throws GameActionException  {
     }
 }
 
+let bestArchonDir: Direction;
+// rubble + 10 b/c it's already calculated
+let bestArchonRubble: i32;
+let bestArchonScore: i32;
+fn inline doLocA(x: i32, y: i32) throws GameActionException {
+    let loc = at.translate(x, y);
+    let baseIdx = (4 + x) * 9 + 4 + y;
+    if rc.onTheMap(loc) && !occupied[baseIdx] {
+        let baseRubble = rc.senseRubble(loc) + 10;
+        if lowPass || baseRubble < 50 {
+            let maxD = if x*x > y*y { x*x } else { y*y };
+
+            for dx in unroll -1..2 {
+                for dy in unroll -1..2 {
+                    let x2 = x + dx;
+                    let y2 = y + dy;
+                    // Only consider locations that are in previous layers (their max coordinate is less than this one)
+                    // this whole condition is evaluated at compile time of course
+                    if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
+                        let i = (4 + x2) * 9 + 4 + y2;
+                        if cache[i].0 + baseRubble < cache[baseIdx].0 {
+                            rc.setIndicatorLine(at.translate(x2, y2), loc, 0, 0, 127);
+                            cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
+                        }
+                    }
+                }
+            }
+        }
+        if cache[baseIdx].0 < 100000 && (baseRubble < bestArchonRubble || (baseRubble == bestArchonRubble && cache[baseIdx].0 < bestArchonScore)) {
+            rc.setIndicatorDot(loc, 255, 0, 0);
+            bestArchonDir = cache[baseIdx].1;
+            bestArchonScore = cache[baseIdx].0;
+            bestArchonRubble = baseRubble;
+        }
+    }
+}
+
+fn pathIterArchon() throws GameActionException  {
+    // Visit each location in order of distance from the origin (mostly)
+    let sides = [1, 3, 5, 7, 5];
+    let offsets = [0, 0, 0, 0, 2];
+    for layer in unroll 0..sides.len() {
+        for i in unroll 0..sides[layer] {
+            let o = offsets[layer];
+            if i != 0 && i+1 != sides[layer] {
+                doLocA(-layer, -layer + o + i);
+                doLocA(layer, -layer + o + i);
+            }
+            doLocA(-layer + o + i, layer);
+            doLocA(-layer + o + i, -layer);
+        }
+    }
+}
+
+// Returns whether to stop
+fn archonMove(): bool throws GameActionException {
+    if rc.isMovementReady() {
+        pathStart();
+        bestArchonDir = Direction::CENTER;
+        bestArchonScore = 0;
+        bestArchonRubble = rc.senseRubble(rc.getLocation()) + 10;
+        pathIterArchon();
+        println("Attempting archon move, got direction " + bestArchonDir + " with rubble " + bestArchonRubble);
+        if bestArchonDir == Direction::CENTER {
+            true
+        } else {
+            rc.move(bestArchonDir);
+            false
+        }
+    } else {
+        false
+    }
+}
+
 fn pathFinish(from: MapLocation, to: MapLocation): Direction {
     let tx = to.x - from.x;
     let ty = to.y - from.y;
@@ -237,7 +311,7 @@ fn pathFinish(from: MapLocation, to: MapLocation): Direction {
 }
 
 let lastTarget: MapLocation = null;
-let lowPass = false;
+let lowPass = true;
 
 define N_SAVED_LOCS = 3;
 let lastLocs: [MapLocation] = [; N_SAVED_LOCS];

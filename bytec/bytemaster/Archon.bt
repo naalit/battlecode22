@@ -89,6 +89,7 @@ fn averageIncome(): i32 throws GameActionException {
 }
 let builderTurns = 0;
 let lead = 0;
+let canMove = true;
 fn turn() throws GameActionException {
     if archonCount != rc.getArchonCount() {
         archonCount = rc.getArchonCount();
@@ -116,73 +117,101 @@ fn turn() throws GameActionException {
         let income = averageIncome();
         lead = rc.getTeamLeadAmount(rc.getTeam());
 
-        let needsBuilder = false;
-        builderTurns += 1;
-        if income >= 8
-            && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab || builderTurns >= 30)
-            && minerCount > 3
-            && Mem::nearbyEnemies.len() == 0
-        {
-            if Mem::getLabCount() == 0 {
-                if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
-                    builderTurns = 0;
-                    needsBuilder = true;
-                } else {
-                    lead -= RobotType::LABORATORY.buildCostLead;
-                }
-                Mem::buildInfo.queueLab();
-            } else {
-                if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
-                    builderTurns = 0;
-                    needsBuilder = true;
-                } else {
-                    lead -= RobotType::WATCHTOWER.buildCostLead;
-                }
-                Mem::buildInfo.queueWatchtower();
+        if rc.getMode() == RobotMode::PORTABLE {
+            // Move to low rubble
+            if Paths::archonMove() {
+                rc.transform();
+                canMove = true;
             }
-        } else if income <= 5 && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab) {
-            Mem::buildInfo.builtWatchtower();
-            Mem::buildInfo.builtLab();
-        }
-
-        // Don't let one Archon dominate
-        // They take turns spawning, or they can override the order if there's enough for each other archon to spawn a soldier to defend itself
-        if rc.getRoundNum() % rc.getArchonCount() == archonOrder
-            || lead >= RobotType::MINER.buildCostLead * (rc.getArchonCount() - archonOrder) {
-            let nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
-            let targetMinerCount = 6 + (rc.getMapWidth() + rc.getMapHeight())/20;
-            let startMinerCount = START_MINERS[archonCount - 1];
-            if needsBuilder {
-                // rc.setIndicatorString("NORMAL BUILDER");
-                spawnBuilder();
-            } else if minerCount < targetMinerCount && (minerCount < startMinerCount || minerCount < soldierCount) {
-                spawnMiner();
-            } else if ((nLead < 6 && rc.getRoundNum() < 100) || rc.getHealth() <= 400) && Mem::nearbyEnemies.len() == 0 {
-                // This builder will suicide after possibly healing the archon
-                // rc.setIndicatorString("SUICIDE BUILDER");
-                spawnSuicideBuilder();
-            } else if rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold {
-                spawnSage();
-            } else {
-                spawnSoldier();
+        } else {
+            if canMove && rc.canTransform() && minerCount >= START_MINERS[archonCount - 1] && rc.senseRubble(rc.getLocation()) > 0 {
+                let rubble = rc.senseRubble(rc.getLocation());
+                let found = true;
+                for i in -5..6 {
+                    for j in unroll -5..6 {
+                        let loc = rc.getLocation().translate(i, j);
+                        if rc.canSenseLocation(loc) && rc.senseRubble(loc) < rubble {
+                            found = true;
+                        }
+                    }
+                    if found { break; }
+                }
+                if found {
+                    rc.transform();
+                } else {
+                    canMove = false;
+                }
             }
-        }
 
-        if rc.isActionReady() {
-            // Try to repair a robot in range.
-            // The targeting logic picks the most important and vulnerable unit,
-            // so it works pretty well in this case too!
-            let bestUnit: RobotInfo = null;
-            Combat::at = rc.getLocation();
-            for i in Mem::nearbyAllies {
-                if i.health < i.type.health && rc.canRepair(i.location) {
-                    if Combat::unitBetter(bestUnit, i) {
-                        bestUnit = i;
+            // Normal archon things
+            let needsBuilder = false;
+            builderTurns += 1;
+            if income >= 8
+                && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab || builderTurns >= 30)
+                && minerCount > 3
+                && Mem::nearbyEnemies.len() == 0
+            {
+                if Mem::getLabCount() == 0 {
+                    if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
+                        builderTurns = 0;
+                        needsBuilder = true;
+                    } else {
+                        lead -= RobotType::LABORATORY.buildCostLead;
+                    }
+                    Mem::buildInfo.queueLab();
+                } else {
+                    if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
+                        builderTurns = 0;
+                        needsBuilder = true;
+                    } else {
+                        lead -= RobotType::WATCHTOWER.buildCostLead;
+                    }
+                    Mem::buildInfo.queueWatchtower();
+                }
+            } else if income <= 5 && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab) {
+                Mem::buildInfo.builtWatchtower();
+                Mem::buildInfo.builtLab();
+            }
+
+            // Don't let one Archon dominate
+            // They take turns spawning, or they can override the order if there's enough for each other archon to spawn a soldier to defend itself
+            if rc.getRoundNum() % rc.getArchonCount() == archonOrder
+                || lead >= RobotType::MINER.buildCostLead * (rc.getArchonCount() - archonOrder) {
+                let nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
+                let targetMinerCount = 6 + (rc.getMapWidth() + rc.getMapHeight())/20;
+                let startMinerCount = START_MINERS[archonCount - 1];
+                if needsBuilder {
+                    // rc.setIndicatorString("NORMAL BUILDER");
+                    spawnBuilder();
+                } else if minerCount < targetMinerCount && (minerCount < startMinerCount || minerCount < soldierCount) {
+                    spawnMiner();
+                } else if ((nLead < 6 && rc.getRoundNum() < 100) || rc.getHealth() <= 400) && Mem::nearbyEnemies.len() == 0 {
+                    // This builder will suicide after possibly healing the archon
+                    // rc.setIndicatorString("SUICIDE BUILDER");
+                    spawnSuicideBuilder();
+                } else if rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold {
+                    spawnSage();
+                } else {
+                    spawnSoldier();
+                }
+            }
+
+            if rc.isActionReady() {
+                // Try to repair a robot in range.
+                // The targeting logic picks the most important and vulnerable unit,
+                // so it works pretty well in this case too!
+                let bestUnit: RobotInfo = null;
+                Combat::at = rc.getLocation();
+                for i in Mem::nearbyAllies {
+                    if i.health < i.type.health && rc.canRepair(i.location) {
+                        if Combat::unitBetter(bestUnit, i) {
+                            bestUnit = i;
+                        }
                     }
                 }
-            }
-            if bestUnit != null {
-                rc.repair(bestUnit.location);
+                if bestUnit != null {
+                    rc.repair(bestUnit.location);
+                }
             }
         }
 
