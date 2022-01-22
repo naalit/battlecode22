@@ -10,5 +10,8 @@ fn preTurn() throws GameActionException {
 }
 
 fn turn() throws GameActionException {
-    
+    Mem::addLabCount();
+    if rc.canTransmute() && rc.getTransmutationRate() <= 7 {
+        rc.transmute();
+    }
 }

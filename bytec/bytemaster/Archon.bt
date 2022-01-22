@@ -118,19 +118,30 @@ fn turn() throws GameActionException {
         let needsBuilder = false;
         builderTurns += 1;
         if income >= 30
-            && (Mem::buildInfo.shouldBuildWatchtower || builderTurns >= 30)
+            && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab || builderTurns >= 30)
             && minerCount > 3
             && Mem::nearbyEnemies.len() == 0
         {
-            if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
-                builderTurns = 0;
-                needsBuilder = true;
+            if Mem::getLabCount() == 0 {
+                if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
+                    builderTurns = 0;
+                    needsBuilder = true;
+                } else {
+                    lead -= RobotType::LABORATORY.buildCostLead;
+                }
+                Mem::buildInfo.queueLab();
             } else {
-                lead -= 150;
+                if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
+                    builderTurns = 0;
+                    needsBuilder = true;
+                } else {
+                    lead -= RobotType::WATCHTOWER.buildCostLead;
+                }
+                Mem::buildInfo.queueWatchtower();
             }
-            Mem::buildInfo.queueWatchtower();
-        } else if income <= 10 && Mem::buildInfo.shouldBuildWatchtower {
+        } else if income <= 10 && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab) {
             Mem::buildInfo.builtWatchtower();
+            Mem::buildInfo.builtLab();
         }
 
         // Don't let one Archon dominate
@@ -149,6 +160,8 @@ fn turn() throws GameActionException {
                 // This builder will suicide after possibly healing the archon
                 rc.setIndicatorString("SUICIDE BUILDER");
                 spawnSuicideBuilder();
+            } else if rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold {
+                spawnSage();
             } else {
                 spawnSoldier();
             }
@@ -179,6 +192,7 @@ fn turn() throws GameActionException {
         if archonOrder == archonCount - 1 {
             Mem::clearMinerCount();
             Mem::clearSoldierCount();
+            Mem::clearLabCount();
         }
         Mem::buildInfo.writeBack();
     }

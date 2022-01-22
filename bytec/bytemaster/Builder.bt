@@ -188,11 +188,33 @@ fn turn() throws GameActionException {
         }
     }
 
-    if bytecodeLeft() > 3000 && existsDamage && Mem::buildInfo.shouldBuildWatchtower && rc.getTeamLeadAmount(rc.getTeam()) >= RobotType::WATCHTOWER.buildCostLead {
+    if Mem::buildInfo.shouldBuildLab && Mem::nearbyEnemies.len() == 0 {
+        let nearbyAllies = Mem::nearbyAllies.len();
+        if Mem::nearbyAllies.len() < 10 {
+            let best: Direction = null;
+            let bestRubble = 10000;
+            for dir in ALL_MOVE_DIRECTIONS {
+                if rc.canBuildRobot(RobotType::LABORATORY, dir) {
+                    let rubble = rc.senseRubble(loc.add(dir));
+                    if rubble < bestRubble {
+                        bestRubble = rubble;
+                        best = dir;
+                    }
+                }
+            }
+            if best != null {
+                rc.buildRobot(RobotType::LABORATORY, best);
+                Mem::buildInfo.builtLab();
+                Mem::spend(RobotType::LABORATORY.buildCostLead);
+                Mem::addLabCount();
+            }
+        }
+    } else if bytecodeLeft() > 3000 && existsDamage && Mem::buildInfo.shouldBuildWatchtower && rc.getTeamLeadAmount(rc.getTeam()) >= RobotType::WATCHTOWER.buildCostLead {
         if towerUpgrade != null && rc.canMutate(towerUpgrade.location) {
             rc.mutate(towerUpgrade.location);
+            Mem::spend(RobotType::WATCHTOWER.getLeadMutateCost(towerUpgrade.level + 1));
         } else {
-            let spot = Combat::microLoc(RobotType::WATCHTOWER, RobotType::WATCHTOWER.health, false, false);
+            let spot = Combat::microLoc(RobotType::WATCHTOWER, 1, true, RobotType::WATCHTOWER.health, false, false);
             if spot != null {
                 let dir = rc.getLocation().dirTo(spot.loc);
                 if spot.rubble < 40 && rc.canBuildRobot(RobotType::WATCHTOWER, dir) {
@@ -221,7 +243,7 @@ fn turn() throws GameActionException {
     }
 
     if canMove {
-        if Mem::buildInfo.shouldBuildWatchtower {
+        if !Mem::buildInfo.shouldBuildLab && Mem::buildInfo.shouldBuildWatchtower {
             let closestSoldier = Mem::getClosestSoldier(rc.getLocation());
             if closestSoldier != null {
                 Paths::target = closestSoldier;
