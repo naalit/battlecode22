@@ -87,12 +87,14 @@ class BuildInfo {
     // 0 or 1
     let shouldBuildWatchtower: bool;
     let shouldBuildLab: bool;
+    let shouldUpgradeLab: bool;
     let changed: bool;
 
     fn read() throws GameActionException {
         let a = rc.readSharedArray(BUILD_INFO_LOC);
         self.shouldBuildWatchtower = a & 0b10 != 0;
         self.shouldBuildLab = a & 1 != 0;
+        self.shouldUpgradeLab = a & 0b100 != 0;
     }
 
     fn writeBack() throws GameActionException {
@@ -104,7 +106,17 @@ class BuildInfo {
             if self.shouldBuildWatchtower {
                 a |= 0b10;
             }
+            if self.shouldUpgradeLab {
+                a |= 0b100;
+            }
             rc.writeSharedArray(BUILD_INFO_LOC, a);
+        }
+    }
+
+    fn queueLabUpgrade() {
+        if !self.shouldUpgradeLab {
+            self.shouldUpgradeLab = true;
+            self.changed = true;
         }
     }
 
@@ -121,6 +133,14 @@ class BuildInfo {
             self.changed = true;
         }
     }
+
+    fn upgradedLab() {
+        if self.shouldUpgradeLab {
+            self.shouldUpgradeLab = false;
+            self.changed = true;
+        }
+    }
+
 
     fn builtLab() {
         if self.shouldBuildLab {

@@ -9,9 +9,44 @@ fn preTurn() throws GameActionException {
 
 }
 
+let incomes: [i32] = [; 10];
+let incomeIdx = 0;
+fn averageIncome(): i32 throws GameActionException {
+    let income = Mem::readIncome();
+    incomes[incomeIdx] = income;
+    incomeIdx = (incomeIdx + 1) % incomes.len();
+    let sum = 0;
+    for i in incomes {
+        sum += i;
+    }
+    rc.setIndicatorString("Income this turn: " + income + ", average income: " + sum / incomes.len());
+    sum / incomes.len()
+}
+
 fn turn() throws GameActionException {
+    if rc.getMode() == RobotMode::PORTABLE {
+        if Paths::archonMove() {
+            rc.transform();
+        }
+    }
+
     Mem::addLabCount();
+    let income = averageIncome();
+
+    // backup for pillars-like maps where the terrain switches
+    // we'll probably still lose since we don't anticipate it, but if the other team doesn't either it might be helpful
+    if rc.senseRubble(rc.getLocation()) >= 40 {
+        rc.transform();
+    }
+
     if rc.canTransmute() && rc.getTransmutationRate() <= 7 {
         rc.transmute();
+        Mem::spend(rc.getTransmutationRate());
+    }
+
+    if rc.getTransmutationRate() > 3 && rc.getTransmutationRate() < 12 {
+        Mem::buildInfo.read();
+        Mem::buildInfo.queueLabUpgrade();
+        Mem::buildInfo.writeBack();
     }
 }

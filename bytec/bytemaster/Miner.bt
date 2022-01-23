@@ -132,9 +132,16 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
             }
             for l in locs {
                 if l != null {
-                    if i.location.isWithinDistanceSquared(l.loc, i.type.actionRadiusSquared) {
-                        let rubble = rc.senseRubble(i.location);
-                        l.enemyDamage += (i.type.damage * 100) / (10 + rubble);
+                    // Assume they could move to attack us next turn, but give it a 2/3 chance
+                    let d = i.location.distanceSquaredTo(l.loc);
+                    if d <= max(20, i.type.actionRadiusSquared) {
+                        if d <= i.type.actionRadiusSquared {
+                            let rubble = rc.senseRubble(i.location);
+                            l.enemyDamage += (i.type.getDamage(i.level) * 1000 / i.type.actionCooldown) / (10 + rubble);
+                        } else {
+                            let rubble = rc.senseRubble(i.location.add(i.location.dirTo(l.loc)));
+                            l.enemyDamage += (i.type.getDamage(i.level) * 1000 / i.type.actionCooldown) / (10 + rubble) * 2 / 3;
+                        }
                     }
                 }
             }

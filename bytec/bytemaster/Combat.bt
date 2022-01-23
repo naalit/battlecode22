@@ -208,6 +208,7 @@ fn microLoc(ty: RobotType, lvl: i32, considerAttack: bool, considerMove: bool, h
                 if loc != null {
                     let d = loc.loc.distanceSquaredTo(bot.location);
                     if bot.mode.canAct && bot.type.damage > 0 && d <= max(20, bot.type.actionRadiusSquared) {
+                        // Assume they could move to attack us next turn, but give it a 2/3 chance
                         if d <= bot.type.actionRadiusSquared {
                             let rubble = rc.senseRubble(bot.location);
                             loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
