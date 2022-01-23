@@ -189,7 +189,7 @@ fn turn() throws GameActionException {
         if robot != null && robot.health < robot.type.getMaxHealth(robot.level) {
             if rc.isMovementReady() && !robot.location.isWithinDistanceSquared(loc, RobotType::BUILDER.actionRadiusSquared) {
                 Paths::target = robot.location;
-                Paths::targetMove(false, true);
+                Paths::targetMove(false);
                 return;
             }
         }
@@ -282,7 +282,7 @@ fn turn() throws GameActionException {
                 }
             // }
         }
-        Paths::targetMove(true, true);
+        Paths::targetMove(true);
     }
 
     Mem::buildInfo.writeBack();

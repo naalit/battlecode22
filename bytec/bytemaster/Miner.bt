@@ -39,17 +39,17 @@ fn turn() throws GameActionException {
                     }
                 }
                 Paths::target = bestLoc;
-                Paths::targetMove(false, true);
+                Paths::targetMove(false);
             } else if currentCorner != -1 {
                 Paths::target = Mem::cornerLocs[currentCorner];
-                Paths::targetMove(true, true);
+                Paths::targetMove(true);
             } else {
                 currentCorner = Mem::minerClaimCorner();
                 if currentCorner != -1 {
                     Paths::target = Mem::cornerLocs[currentCorner];
-                    Paths::targetMove(true, true);
+                    Paths::targetMove(true);
                 } else {
-                    Paths::targetMove(true, true);
+                    Paths::targetMove(true);
                 }
             }
         }

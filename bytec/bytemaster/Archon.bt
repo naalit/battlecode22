@@ -165,13 +165,12 @@ fn turn() throws GameActionException {
                 }
                 Mem::buildInfo.queueWatchtower();
             }
-        // } else if income >= 4 && (Mem::buildInfo.shouldBuildLab || Mem::buildInfo.shouldBuildWatchtower) {
-        //     if Mem::buildInfo.shouldBuildLab {
-        //         lead -= RobotType::LABORATORY.buildCostLead;
-        //     } else {
-        //         lead -= RobotType::WATCHTOWER.buildCostLead;
-        //     }
-        // }
+        } else if income >= 4 && (Mem::buildInfo.shouldBuildLab || Mem::buildInfo.shouldBuildWatchtower) {
+            if Mem::buildInfo.shouldBuildLab {
+                lead -= RobotType::LABORATORY.buildCostLead;
+            } else {
+                lead -= RobotType::WATCHTOWER.buildCostLead;
+            }
         } else if income <= 3 && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab) {
             Mem::buildInfo.builtWatchtower();
             Mem::buildInfo.builtLab();

@@ -65,7 +65,7 @@ fn turn() throws GameActionException {
                     Paths::target = closest;
                 }
             }
-            Paths::targetMove(true, false);
+            Paths::targetMove(true);
         }
     }
 }

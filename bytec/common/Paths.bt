@@ -147,20 +147,18 @@ fn inline doLoc(x: i32, y: i32) throws GameActionException {
     let baseIdx = (4 + x) * 9 + 4 + y;
     if rc.onTheMap(loc) && !occupied[baseIdx] {
         let baseRubble = rc.senseRubble(loc) + 10;
-        if lowPass || baseRubble < 50 {
-            let maxD = if x*x > y*y { x*x } else { y*y };
+        let maxD = if x*x > y*y { x*x } else { y*y };
 
-            for dx in unroll -1..2 {
-                for dy in unroll -1..2 {
-                    let x2 = x + dx;
-                    let y2 = y + dy;
-                    // Only consider locations that are in previous layers (their max coordinate is less than this one)
-                    // this whole condition is evaluated at compile time of course
-                    if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
-                        let i = (4 + x2) * 9 + 4 + y2;
-                        if cache[i].0 + baseRubble < cache[baseIdx].0 {
-                            cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
-                        }
+        for dx in unroll -1..2 {
+            for dy in unroll -1..2 {
+                let x2 = x + dx;
+                let y2 = y + dy;
+                // Only consider locations that are in previous layers (their max coordinate is less than this one)
+                // this whole condition is evaluated at compile time of course
+                if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
+                    let i = (4 + x2) * 9 + 4 + y2;
+                    if cache[i].0 + baseRubble < cache[baseIdx].0 {
+                        cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
                     }
                 }
             }
@@ -197,21 +195,19 @@ fn inline doLocA(x: i32, y: i32) throws GameActionException {
     let baseIdx = (4 + x) * 9 + 4 + y;
     if rc.onTheMap(loc) && !occupied[baseIdx] {
         let baseRubble = rc.senseRubble(loc) + 10;
-        if lowPass || baseRubble < 50 {
-            let maxD = if x*x > y*y { x*x } else { y*y };
+        let maxD = if x*x > y*y { x*x } else { y*y };
 
-            for dx in unroll -1..2 {
-                for dy in unroll -1..2 {
-                    let x2 = x + dx;
-                    let y2 = y + dy;
-                    // Only consider locations that are in previous layers (their max coordinate is less than this one)
-                    // this whole condition is evaluated at compile time of course
-                    if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
-                        let i = (4 + x2) * 9 + 4 + y2;
-                        if cache[i].0 + baseRubble < cache[baseIdx].0 {
-                            rc.setIndicatorLine(at.translate(x2, y2), loc, 0, 0, 127);
-                            cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
-                        }
+        for dx in unroll -1..2 {
+            for dy in unroll -1..2 {
+                let x2 = x + dx;
+                let y2 = y + dy;
+                // Only consider locations that are in previous layers (their max coordinate is less than this one)
+                // this whole condition is evaluated at compile time of course
+                if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
+                    let i = (4 + x2) * 9 + 4 + y2;
+                    if cache[i].0 + baseRubble < cache[baseIdx].0 {
+                        rc.setIndicatorLine(at.translate(x2, y2), loc, 0, 0, 127);
+                        cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
                     }
                 }
             }
@@ -311,7 +307,6 @@ fn pathFinish(from: MapLocation, to: MapLocation): Direction {
 }
 
 let lastTarget: MapLocation = null;
-let lowPass = true;
 
 define N_SAVED_LOCS = 3;
 let lastLocs: [MapLocation] = [; N_SAVED_LOCS];
@@ -327,9 +322,8 @@ fn inline clearLocs() {
     lastLocIdx = 0;
 }
 
-fn targetMove(exploring: bool, allowLowPass: bool): bool throws GameActionException {
+fn targetMove(exploring: bool): bool throws GameActionException {
     let loc = rc.getLocation();
-    lowPass = allowLowPass;
 
     if (target == null || target == loc || (exploring && rc.canSenseLocation(target)) || (exploring && rc.canSenseLocation(target) && !rc.onTheMap(target))) {
         if exploring {

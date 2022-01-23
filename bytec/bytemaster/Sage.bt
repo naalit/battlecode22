@@ -19,14 +19,14 @@ fn turn() throws GameActionException {
         return;
     } else if rc.getHealth() <= 25 && Mem::closestArchon != null && !Mem::closestArchon.isWithinDistanceSquared(loc, RobotType::ARCHON.actionRadiusSquared) {
         Paths::target = Mem::closestArchon;
-        Paths::targetMove(false, false);
+        Paths::targetMove(false);
         return;
     }
 
     let closestSoldier = Mem::getClosestSoldier(loc);
     if closestSoldier != null && closestSoldier.isWithinDistanceSquared(loc, 64) && !rc.canSenseLocation(closestSoldier) {
         Paths::target = closestSoldier;
-        Paths::targetMove(true, false);
+        Paths::targetMove(true);
         return;
     }
 
@@ -61,7 +61,7 @@ fn turn() throws GameActionException {
         }
         if closest != null {
             Paths::target = loc.add(closest).add(closest);
-            Paths::targetMove(false, false);
+            Paths::targetMove(false);
             return;
         }
     }
@@ -78,7 +78,7 @@ fn turn() throws GameActionException {
         }
         if closest != null {
             Paths::target = closest;
-            Paths::targetMove(false, false);
+            Paths::targetMove(false);
             wasTargetingArchon = true;
             return;
         }
@@ -87,5 +87,5 @@ fn turn() throws GameActionException {
         Paths::target = null;
     }
 
-    Paths::targetMove(true, false);
+    Paths::targetMove(true);
 }
