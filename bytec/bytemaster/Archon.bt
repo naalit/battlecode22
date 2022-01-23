@@ -123,7 +123,7 @@ fn turn() throws GameActionException {
     } else {
         if canMove && rc.canTransform() && minerCount >= START_MINERS[archonCount - 1] && rc.senseRubble(rc.getLocation()) > 0 {
             let rubble = rc.senseRubble(rc.getLocation());
-            let found = true;
+            let found = false;
             for i in -5..6 {
                 for j in unroll -5..6 {
                     let loc = rc.getLocation().translate(i, j);
@@ -165,7 +165,14 @@ fn turn() throws GameActionException {
                 }
                 Mem::buildInfo.queueWatchtower();
             }
-        } else if income <= 5 && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab) {
+        // } else if income >= 4 && (Mem::buildInfo.shouldBuildLab || Mem::buildInfo.shouldBuildWatchtower) {
+        //     if Mem::buildInfo.shouldBuildLab {
+        //         lead -= RobotType::LABORATORY.buildCostLead;
+        //     } else {
+        //         lead -= RobotType::WATCHTOWER.buildCostLead;
+        //     }
+        // }
+        } else if income <= 3 && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab) {
             Mem::buildInfo.builtWatchtower();
             Mem::buildInfo.builtLab();
         }
@@ -182,10 +189,10 @@ fn turn() throws GameActionException {
                 spawnBuilder();
             } else if minerCount < targetMinerCount && (minerCount < startMinerCount || minerCount < soldierCount) {
                 spawnMiner();
-            } else if ((nLead < 6 && rc.getRoundNum() < 100) || rc.getHealth() <= 400) && Mem::nearbyEnemies.len() == 0 {
-                // This builder will suicide after possibly healing the archon
-                // rc.setIndicatorString("SUICIDE BUILDER");
-                spawnSuicideBuilder();
+            // } else if ((nLead < 6 && rc.getRoundNum() < 100) || rc.getHealth() <= 400) && Mem::nearbyEnemies.len() == 0 {
+            //     // This builder will suicide after possibly healing the archon
+            //     // rc.setIndicatorString("SUICIDE BUILDER");
+            //     spawnSuicideBuilder();
             } else if rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold {
                 spawnSage();
             } else {
@@ -198,11 +205,15 @@ fn turn() throws GameActionException {
             // The targeting logic picks the most important and vulnerable unit,
             // so it works pretty well in this case too!
             let bestUnit: RobotInfo = null;
+            let bestV = 0;
             Combat::at = rc.getLocation();
+            let heal = rc.getType().getHealing(rc.getLevel());
             for i in Mem::nearbyAllies {
                 if i.health < i.type.health && rc.canRepair(i.location) {
-                    if Combat::unitBetter(bestUnit, i) {
+                    let v = Combat::repairValue(heal, i);
+                    if v > bestV {
                         bestUnit = i;
+                        bestV = v;
                     }
                 }
             }

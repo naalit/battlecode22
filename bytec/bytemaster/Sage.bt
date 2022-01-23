@@ -17,7 +17,7 @@ fn turn() throws GameActionException {
     if Mem::nearbyEnemies.len() > 0 {
         Combat::combatMicro();
         return;
-    } else if rc.getHealth() <= Combat::RETREAT_HEALTH && Mem::closestArchon != null && !Mem::closestArchon.isWithinDistanceSquared(loc, RobotType::ARCHON.actionRadiusSquared) {
+    } else if rc.getHealth() <= 25 && Mem::closestArchon != null && !Mem::closestArchon.isWithinDistanceSquared(loc, RobotType::ARCHON.actionRadiusSquared) {
         Paths::target = Mem::closestArchon;
         Paths::targetMove(false, false);
         return;
@@ -30,7 +30,7 @@ fn turn() throws GameActionException {
         return;
     }
 
-    if Mem::closestArchon != null && Mem::closestArchon.isWithinDistanceSquared(loc, RobotType::ARCHON.actionRadiusSquared) && rc.getHealth() < rc.getType().health {
+    if Mem::closestArchon != null && Mem::closestArchon.isWithinDistanceSquared(loc, 25) && rc.getHealth() < rc.getType().health {
         // Try to stay about 13 units^2 of the archon so we're not in the way
         // If we need to heal, make sure we stay within the archon's action radius as well
         // and stay nearby until we're fully healed and can go back to the fight

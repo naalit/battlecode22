@@ -5,10 +5,6 @@ extern {
 use Common::*;
 use RobotPlayer::rc;
 
-// Copied from Mem since we want to inline them
-define ENEMY_SOLDIER_LOC = 15;
-define ENEMY_SOLDIER_LEN = 16;
-
 fn preTurn() throws GameActionException {
     // Make sure to mine before we do anything else, in case maintain() and micro goes over on bytecode
     tryMine();
@@ -130,7 +126,7 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
         }
     }
     for i in Mem::nearbyEnemies {
-        if i.type.damage > 0 {
+        if i.mode.canAct && i.type.damage > 0 {
             if add_soldiers {
                 Mem::addSoldier(i.location);
             }

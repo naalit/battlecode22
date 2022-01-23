@@ -27,6 +27,8 @@ class LocInfo {
     let archonDist: i32;
     let chargeHP: i32;
     let furyHP: i32;
+    let attackDamage: i32;
+    let bestDamage: i32;
 
     fn init(loc: MapLocation) throws GameActionException {
         self.loc = loc;
@@ -35,49 +37,12 @@ class LocInfo {
         self.distToEnemy = 100000;
         self.chargeHP = 0;
         self.furyHP = 0;
+        self.attackDamage = 0;
+        self.bestDamage = 0;
         if Mem::closestArchon != null {
             self.archonDist = Mem::closestArchon.distanceSquaredTo(loc);
         }
     }
-}
-fn unitBetter(old: RobotInfo, new: RobotInfo): bool {
-    // Targeting priority:
-    fn inline priority(ty: RobotType): i32 = match ty {
-        // Sages are valuable and dangerous, kill on sight
-        SAGE => 7,
-        // The most immediate threat, if we don't kill them they'll kill us
-        SOLDIER => 6,
-        // We'll need to kill these to take out a watchtower
-        // probably should have special-case code for actually seeing a watchtower though
-        BUILDER => 5,
-        // Another threat
-        WATCHTOWER => 4,
-        // We probably won't take out an Archon anytime soon with Soldiers, but doing damage on it is good
-        // Really these last three are TBD though
-        ARCHON => 3,
-        MINER => 2,
-        LABORATORY => 1,
-    };
-
-    if old == null { return true; }
-    if priority(new.type) > priority(old.type) { return true; }
-    if priority(new.type) < priority(old.type) { return false; }
-    let dNew = damageDone(rc.getType(), rc.getLevel(), new);
-    let dOld = damageDone(rc.getType(), rc.getLevel(), old);
-    if dNew > dOld { return true; }
-    if dNew < dOld { return false; }
-    if new.health < old.health { return true; }
-    if new.health > old.health { return false; }
-
-    // Target the one closest to the Archon if there is one
-    // if Mem::closestArchon != null && new.location.isWithinDistanceSquared(Mem::closestArchon, min(20, Mem::closestArchon.distanceSquaredTo(old.location))) {
-    //     true
-    // Otherwise just pick the closest one
-    // } else if Mem::closestArchon == null {
-    new.location.isWithinDistanceSquared(at, at.distanceSquaredTo(old.location)  - 1)
-    // } else {
-    //     false
-    // }
 }
 fn locBetter(old: LocInfo, new: LocInfo): bool {
     if old == null {
@@ -89,14 +54,14 @@ fn locBetter(old: LocInfo, new: LocInfo): bool {
             new.enemyDamage <= nearbyFriendlyDamage / 2 + selfDamage / (10 + new.rubble) && 
             new.bestEnemy != null && 
             new.bestEnemy.health <= selfHealth && 
-            unitBetter(old.bestEnemy, new.bestEnemy)
+            new.bestDamage > old.bestDamage
             {
             true
         } else if canAttack &&
             old.enemyDamage <= nearbyFriendlyDamage / 2 + selfDamage / (10 + old.rubble) && 
             old.bestEnemy != null && 
             old.bestEnemy.health <= selfHealth && 
-            unitBetter(new.bestEnemy, old.bestEnemy)
+            old.bestDamage > new.bestDamage
             {
                 false
         } else if new.enemyDamage < old.enemyDamage {
@@ -106,12 +71,16 @@ fn locBetter(old: LocInfo, new: LocInfo): bool {
                 true
             } else if new.rubble < old.rubble && new.enemyDamage > 0 {
                 true
+            } else if new.rubble > old.rubble && new.enemyDamage > 0 {
+                false
             } else if new.rubble <= old.rubble + 10 {
-                if canAttack && new.bestEnemy != null && unitBetter(old.bestEnemy, new.bestEnemy) {
+                if canAttack && new.bestEnemy != null && new.bestDamage > old.bestDamage {
                     true
-                } else if !canAttack || old.bestEnemy == null || !unitBetter(new.bestEnemy, old.bestEnemy) {
+                } else if !canAttack || old.bestEnemy == null || new.bestDamage >= old.bestDamage {
                     if new.rubble < old.rubble {
                         true
+                    } else if new.rubble > old.rubble {
+                        false
                     } else if nearbyFriendlyHP >= nearbyEnemyHP {
                         new.distToEnemy < old.distToEnemy
                     } else {
@@ -128,71 +97,83 @@ fn locBetter(old: LocInfo, new: LocInfo): bool {
         false
     }
 }
-fn inline updateLoc(loc: LocInfo, unit: RobotInfo) {
-    if loc != null {
-        let d = loc.loc.distanceSquaredTo(unit.location);
-        if unit.type.damage > 0 && d <= unit.type.actionRadiusSquared {
-            let rubble = rc.senseRubble(unit.location);
-            loc.enemyDamage += (unit.type.getDamage(unit.level) * 1000 / unit.type.actionCooldown) / (10 + rubble);
-        }
-        if canAttack && d <= actionRadius {
-            if unitBetter(loc.bestEnemy, unit) {
-                loc.bestEnemy = unit;
-                loc.distToEnemy = d;
-            }
-            if isSage {
-                // TODO weight based on unit type and/or damage or something
-                if unit.mode == RobotMode::TURRET {
-                    let hp = unit.type.getMaxHealth(unit.level) / 10;
-                    if hp > unit.health {
-                        loc.furyHP += unit.health + KILL_VALUE;
-                    } else {
-                        loc.furyHP += hp;
-                    }
-                } else if unit.mode == RobotMode::DROID {
-                    let hp = unit.type.getMaxHealth(unit.level) * 22 / 100;
-                    if hp > unit.health {
-                        loc.chargeHP += unit.health + KILL_VALUE;
-                    } else {
-                        loc.chargeHP += hp;
-                    }
-                }
-            }
-        }
-    }
-}
 
-fn microTarget(add_soldiers: bool): RobotInfo throws GameActionException {
+fn microTarget(dmg: i32, add_soldiers: bool): RobotInfo throws GameActionException {
     at = rc.getLocation();
     let best: RobotInfo = null;
+    let bestD = 0;
     for i in Mem::nearbyEnemies {
         if add_soldiers && i.type.damage > 0 {
             Mem::addSoldier(i.location);
         }
         if rc.canAttack(i.location) {
-            if unitBetter(best, i) {
+            let d = damageValue(dmg, i);
+            if d > bestD {
                 best = i;
+                bestD = d;
             }
         }
     }
     best
 }
 
-fn inline damageDone(ty: RobotType, lvl: i32, unit: RobotInfo): i32 {
-    if unit != null {
-        let hp = ty.getDamage(lvl);
-        if hp > unit.health {
-            unit.health + KILL_VALUE
-        } else {
-            hp
-        }
-    } else {
-        0
+fn inline damageValue(dmg: i32, unit: RobotInfo): i32 {
+    // 3 damage to soldier at 50% health: 150
+    // 3 damage to sage at 100% health: 300
+    // 3 damage to lab at 50% health: 6
+    // 3 damage to miner at 100% health: 1
+    let kill = dmg >= unit.health;
+    if kill { dmg = unit.health; }
+    let mkill = if kill { 1 } else { 0 };
+    let healthPercent = unit.health * 100 / unit.type.getMaxHealth(unit.level);
+    let mhealth = (150 - healthPercent) / 10;
+    dmg *= mhealth;
+
+    match unit.type {
+        // Sages are valuable and dangerous, kill on sight
+        SAGE => (dmg + mkill * KILL_VALUE) * 20,
+        // The most immediate threat, if we don't kill them they'll kill us
+        SOLDIER => (dmg + mkill * KILL_VALUE) * 5,
+        // We'll need to kill these to take out a watchtower
+        // probably should have special-case code for actually seeing a watchtower though
+        BUILDER => dmg + mkill * KILL_VALUE,
+        // Another threat
+        WATCHTOWER => dmg + mkill * KILL_VALUE * 20,
+        // Killing an archon would be *incredible*
+        ARCHON => dmg + mkill * 1000,
+        // Killing the enemy lab is also pretty good
+        LABORATORY => dmg / 5 + mkill * KILL_VALUE * 4,
+        MINER => dmg / 10 + mkill * KILL_VALUE,
     }
 }
 
+fn repairValue(heal: i32, unit: RobotInfo): i32 {
+    if unit.health == unit.type.getMaxHealth(unit.level) {
+        return 0;
+    }
+    let isProto = unit.mode == RobotMode::PROTOTYPE;
+    let protoMul = if isProto { 1 } else { 0 };
+    let mul = match unit.type {
+        // Sages are valuable and dangerous, kill on sight
+        SAGE => 4,
+        // The most immediate threat, if we don't kill them they'll kill us
+        SOLDIER => 3,
+        // We'll need to kill these to take out a watchtower
+        // probably should have special-case code for actually seeing a watchtower though
+        BUILDER => 1,
+        // Another threat
+        WATCHTOWER => if unit.health < 60 && isProto { 1 } else { 4 + 2 * protoMul },
+        // Killing an archon would be *incredible*
+        ARCHON => 5,
+        // Killing the enemy lab is also pretty good
+        LABORATORY => if unit.health < 30 { 4 } else { 1 + 4 * protoMul },
+        MINER => 1,
+    };
+    mul * heal * 100 * (unit.type.getMaxHealth(unit.level) - unit.health) / unit.type.getMaxHealth(unit.level)
+}
+
 let cloc: LocInfo = null;
-fn microLoc(ty: RobotType, lvl: i32, considerAttack: bool, health: i32, include_center: bool, add_soldiers: bool): LocInfo throws GameActionException {
+fn microLoc(ty: RobotType, lvl: i32, considerAttack: bool, considerMove: bool, health: i32, include_center: bool, add_soldiers: bool): LocInfo throws GameActionException {
     at = rc.getLocation();
     selfDamage = ty.getDamage(lvl) * 100;// 1000 / ty.actionCooldown;
     actionRadius = ty.actionRadiusSquared;
@@ -207,7 +188,7 @@ fn microLoc(ty: RobotType, lvl: i32, considerAttack: bool, health: i32, include_
     for i in unroll 0..9 {
         let dir = directions[i];
         let l = at.add(dir);
-        if (include_center && dir == Direction::CENTER) || (!rc.canSenseRobotAtLocation(l) && rc.onTheMap(l)) {
+        if (include_center && dir == Direction::CENTER) || (considerMove && !rc.canSenseRobotAtLocation(l) && rc.onTheMap(l)) {
             locs[i] = LocInfo();
             locs[i].init(l);
             if dir == Direction::CENTER {
@@ -215,6 +196,7 @@ fn microLoc(ty: RobotType, lvl: i32, considerAttack: bool, health: i32, include_
             }
         }
     }
+
     nearbyEnemyHP = 0;
     for bot in Mem::nearbyEnemies {
         if rc.canSenseLocation(bot.location) {
@@ -223,10 +205,43 @@ fn microLoc(ty: RobotType, lvl: i32, considerAttack: bool, health: i32, include_
                 nearbyEnemyHP += bot.health;
             }
             for loc in locs {
-                updateLoc(loc, bot);
+                if loc != null {
+                    let d = loc.loc.distanceSquaredTo(bot.location);
+                    if bot.mode.canAct && bot.type.damage > 0 && d <= bot.type.actionRadiusSquared {
+                        let rubble = rc.senseRubble(bot.location);
+                        loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
+                    }
+                    if canAttack && d <= actionRadius {
+                        let attackDamage = damageValue(ty.getDamage(lvl), bot);
+                        if attackDamage > loc.attackDamage {
+                            loc.bestEnemy = bot;
+                            loc.distToEnemy = d;
+                            loc.attackDamage = attackDamage;
+                            if attackDamage > loc.bestDamage {
+                                loc.bestDamage = attackDamage;
+                            }
+                        }
+                        if isSage {
+                            if bot.mode == RobotMode::TURRET {
+                                let hp = bot.type.getMaxHealth(bot.level) / 10;
+                                loc.furyHP += damageValue(hp, bot);
+                                if loc.furyHP > loc.bestDamage {
+                                    loc.bestDamage = loc.furyHP;
+                                }
+                            } else if bot.mode == RobotMode::DROID {
+                                let hp = bot.type.getMaxHealth(bot.level) * 22 / 100;
+                                loc.chargeHP += damageValue(hp, bot);
+                                if loc.chargeHP > loc.bestDamage {
+                                    loc.bestDamage = loc.chargeHP;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+
     nearbyFriendlyHP = rc.getHealth();
     nearbyFriendlyDamage = 0;
     for i in Mem::nearbyAllies {
@@ -251,7 +266,7 @@ fn microLoc(ty: RobotType, lvl: i32, considerAttack: bool, health: i32, include_
 }
 
 fn findSpawnSpace(ty: RobotType): Direction throws GameActionException {
-    let best = microLoc(ty, 1, true, ty.health, false, false);
+    let best = microLoc(ty, 1, true, true, ty.health, false, false);
 
     if best != null {
         rc.setIndicatorString("SPAWN MICRO for " + ty + ": Damage: " + best.enemyDamage + ", rubble: " + best.rubble);
@@ -263,47 +278,35 @@ fn findSpawnSpace(ty: RobotType): Direction throws GameActionException {
 }
 
 fn combatMicro() throws GameActionException {
-    if rc.isMovementReady() {
-        let canAttack = rc.getActionCooldownTurns() < 20;
-        let best = microLoc(rc.getType(), rc.getLevel(), true, rc.getHealth(), true, true);
-        rc.setIndicatorString("MOVE MICRO: Damage: " + best.enemyDamage + ", rubble: " + best.rubble);
-        if best == null {
-            println("ERROR! best should not be null, CENTER is always an option");
+    let canAttack = rc.getActionCooldownTurns() <= 20;
+    let best = microLoc(rc.getType(), rc.getLevel(), canAttack, rc.isMovementReady(), rc.getHealth(), true, true);
+    rc.setIndicatorString("MOVE MICRO: Damage: " + best.enemyDamage + ", rubble: " + best.rubble);
+    if best == null {
+        println("ERROR! best should not be null, CENTER is always an option");
+    }
+    // We can attack before or after moving, do whichever one is better
+    let bestNow = cloc.bestEnemy;
+    let bestThen = best.bestEnemy;
+    let shouldAttack = true;
+    if isSage {
+        shouldAttack = best.attackDamage > max(best.furyHP, best.chargeHP);
+    }
+    if shouldAttack && bestNow != null && cloc.bestDamage > best.bestDamage {
+        if bestNow != null && rc.canAttack(bestNow.location) {
+            rc.attack(bestNow.location);
         }
-        // We can attack before or after moving, do whichever one is better
-        let bestNow = cloc.bestEnemy;
-        let bestThen = best.bestEnemy;
-        let shouldAttack = true;
-        if isSage {
-            let bestDamage = max(damageDone(rc.getType(), rc.getLevel(), bestNow), damageDone(rc.getType(), rc.getLevel(), bestThen));
-            shouldAttack = bestDamage > max(best.furyHP, best.chargeHP);
-        }
-        if shouldAttack && bestNow != null && unitBetter(bestThen, bestNow) {
-            if bestNow != null && rc.canAttack(bestNow.location) {
-                rc.attack(bestNow.location);
-            }
-        }
-        if best.loc != at {
-            rc.move(at.dirTo(best.loc));
-        }
-        if shouldAttack && bestThen != null && rc.canAttack(bestThen.location) {
-            rc.attack(bestThen.location);
-        }
-        if isSage && !shouldAttack && rc.isActionReady() {
-            if best.furyHP > best.chargeHP {
-                rc.envision(AnomalyType::FURY);
-            } else {
-                rc.envision(AnomalyType::CHARGE);
-            }
-        }
-    } else if rc.isActionReady() {
-        let best = microTarget(true);
-        if best == null {
-            rc.setIndicatorString("ATTACK MICRO: idle");
+    }
+    if best.loc != at {
+        rc.move(at.dirTo(best.loc));
+    }
+    if shouldAttack && bestThen != null && rc.canAttack(bestThen.location) {
+        rc.attack(bestThen.location);
+    }
+    if isSage && !shouldAttack && rc.isActionReady() && max(best.furyHP, best.chargeHP) > 0 {
+        if best.furyHP > best.chargeHP {
+            rc.envision(AnomalyType::FURY);
         } else {
-            rc.setIndicatorString("ATTACK MICRO: attacking " + best.type);
-            rc.setIndicatorLine(at, best.location, 255, 0, 0);
-            rc.attack(best.location);
+            rc.envision(AnomalyType::CHARGE);
         }
     }
 }

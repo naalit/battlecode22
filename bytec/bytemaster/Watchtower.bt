@@ -22,7 +22,7 @@ fn turn() throws GameActionException {
             return;
         }
 
-        let best = Combat::microTarget(true);
+        let best = Combat::microTarget(rc.getType().getDamage(rc.getLevel()), true);
         if best == null {
             rc.setIndicatorString("ATTACK MICRO: idle");
         } else {
@@ -39,7 +39,7 @@ fn turn() throws GameActionException {
             }
         }
         if sawSoldier {
-            let best = Combat::microLoc(rc.getType(), rc.getLevel(), true, rc.getHealth(), true, true);
+            let best = Combat::microLoc(rc.getType(), rc.getLevel(), true, true, rc.getHealth(), true, true);
             let dir = rc.getLocation().dirTo(best.loc);
             if dir != Direction::CENTER && rc.canMove(dir) {
                 rc.move(dir);

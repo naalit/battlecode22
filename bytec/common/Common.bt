@@ -70,7 +70,11 @@ extern enum RobotMode {
     DROID,
     PORTABLE,
     PROTOTYPE,
-    TURRET,
+    TURRET;
+
+    let canAct: bool;
+    let canMove: bool;
+    let canTransform: bool;
 }
 extern enum Team {
     A,
