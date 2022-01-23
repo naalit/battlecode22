@@ -5,6 +5,10 @@ extern {
 use Common::*;
 use RobotPlayer::rc;
 
+// Copied from Mem since we want to inline them
+define ENEMY_SOLDIER_LOC = 15;
+define ENEMY_SOLDIER_LEN = 16;
+
 fn preTurn() throws GameActionException {
     // Make sure to mine before we do anything else, in case maintain() and micro goes over on bytecode
     tryMine();
@@ -240,13 +244,15 @@ fn microMove(): bool throws GameActionException {
 // Returns an adjacent location that we can continue mining
 fn tryMine() throws GameActionException {
     let at = rc.getLocation();
+    let onOurSide = Mem::closestArchon == null || (abs(at.x - Mem::closestArchon.x) <= rc.getMapWidth() / 2 || abs(at.y - Mem::closestArchon.y) <= rc.getMapHeight() / 2);
+    let offensiveMining = onOurSide && Mem::nearbyEnemies.len() > max(2, Mem::nearbyAllies.len());
     for dir in allDirections() {
         let loc = at.add(dir);
         while rc.canMineGold(loc) {
             rc.mineGold(loc);
         }
         // Leave 1 so it regenerates
-        while rc.canMineLead(loc) && rc.senseLead(loc) > 1 {
+        while rc.canMineLead(loc) && (offensiveMining || rc.senseLead(loc) > 1) {
             rc.mineLead(loc);
         }
     }

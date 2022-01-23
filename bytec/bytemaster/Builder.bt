@@ -5,10 +5,6 @@ extern {
 use Common::*;
 use RobotPlayer::rc;
 
-// Copied from Mem since we want to inline them
-define ENEMY_SOLDIER_LOC = 15;
-define ENEMY_SOLDIER_LEN = 16;
-
 fn preTurn() throws GameActionException {
 
 }
