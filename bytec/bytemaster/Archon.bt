@@ -188,10 +188,11 @@ fn turn() throws GameActionException {
                 spawnBuilder();
             } else if minerCount < targetMinerCount && (minerCount < startMinerCount || minerCount < soldierCount) {
                 spawnMiner();
-            // } else if ((nLead < 6 && rc.getRoundNum() < 100) || rc.getHealth() <= 400) && Mem::nearbyEnemies.len() == 0 {
-            //     // This builder will suicide after possibly healing the archon
-            //     // rc.setIndicatorString("SUICIDE BUILDER");
-            //     spawnSuicideBuilder();
+            } else if ((nLead < 20 && rc.getRoundNum() > 300)) && Mem::nearbyEnemies.len() < min(3, Mem::nearbyAllies.len()) {
+                // This builder will suicide after possibly healing the archon
+                // rc.setIndicatorString("SUICIDE BUILDER");
+                Mem::buildInfo.queueLeadFarming();
+                spawnSuicideBuilder();
             } else if rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold {
                 spawnSage();
             } else {

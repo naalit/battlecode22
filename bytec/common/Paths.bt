@@ -111,8 +111,6 @@ fn pathStart() throws GameActionException {
     }
 
     // Initialize locations adjacent to the starting point
-    let rubble0 = rc.senseRubble(at);
-
     let directions = [
         Direction::SOUTHWEST,
         Direction::WEST,
@@ -133,7 +131,7 @@ fn pathStart() throws GameActionException {
                 if rc.canMove(dir) && !occupied[i] {
                     let loc = at.translate(x, y);
                     let baseRubble = rc.senseRubble(loc) + 10;
-                    cache[i] = (baseRubble + rubble0, dir);
+                    cache[i] = (baseRubble, dir);
                 }
             }
         }

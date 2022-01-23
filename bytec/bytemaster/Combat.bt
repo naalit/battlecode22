@@ -257,6 +257,16 @@ fn microLoc(ty: RobotType, lvl: i32, considerAttack: bool, considerMove: bool, h
                 let rubble = rc.senseRubble(i.location);
                 nearbyFriendlyDamage += (i.type.getDamage(i.level) * 1000 / i.type.actionCooldown) / (10 + rubble);
             }
+            // Fury also hits friendly buildings
+            if isSage && i.mode == RobotMode::TURRET {
+                for loc in locs {
+                    if loc != null && i.location.isWithinDistanceSquared(loc.loc, actionRadius) {
+                        let hp = i.type.getMaxHealth(i.level) / 10;
+                        loc.furyHP -= damageValue(hp, i);
+                        loc.bestDamage = max(loc.attackDamage, max(loc.furyHP, loc.chargeHP));
+                    }
+                }
+            }
         }
     }
 
@@ -294,8 +304,15 @@ fn combatMicro() throws GameActionException {
     let bestNow = cloc.bestEnemy;
     let bestThen = best.bestEnemy;
     let shouldAttack = true;
+    let abyssValue = 0;
     if isSage {
-        shouldAttack = best.attackDamage > max(best.furyHP, best.chargeHP);
+        let onOurSide = Mem::closestArchon == null || (abs(at.x - Mem::closestArchon.x) <= rc.getMapWidth() / 2 || abs(at.y - Mem::closestArchon.y) <= rc.getMapHeight() / 2);
+        let offensiveMining = onOurSide && Mem::nearbyEnemies.len() > max(2, Mem::nearbyAllies.len());
+        if offensiveMining {
+            abyssValue = rc.senseNearbyLocationsWithLeadAt(best.loc, rc.getType().actionRadiusSquared, 2).len() + 7 * rc.senseNearbyLocationsWithGoldAt(best.loc, rc.getType().actionRadiusSquared).len();
+            abyssValue *= 10;
+        }
+        shouldAttack = best.attackDamage > max(best.furyHP, best.chargeHP) && best.attackDamage > abyssValue;
     }
     if shouldAttack && bestNow != null && cloc.bestDamage > best.bestDamage {
         if bestNow != null && rc.canAttack(bestNow.location) {
@@ -309,7 +326,9 @@ fn combatMicro() throws GameActionException {
         rc.attack(bestThen.location);
     }
     if isSage && !shouldAttack && rc.isActionReady() && max(best.furyHP, best.chargeHP) > 0 {
-        if best.furyHP > best.chargeHP {
+        if abyssValue > best.furyHP && abyssValue > best.chargeHP {
+            rc.envision(AnomalyType::ABYSS);
+        } else if best.furyHP > best.chargeHP {
             rc.envision(AnomalyType::FURY);
         } else {
             rc.envision(AnomalyType::CHARGE);

@@ -243,23 +243,23 @@ fn turn() throws GameActionException {
                 }
             }
         }
-        // else if !Mem::buildInfo.shouldBuildLab && !Mem::buildInfo.shouldBuildWatchtower && Mem::closestArchon != null && rc.getRoundNum() < 100 && loc.isWithinDistanceSquared(Mem::closestArchon, 8) {
-        //     if Mem::closestArchon.isWithinDistanceSquared(loc, 13) {
-        //         rc.setIndicatorString("SUICIDE MODE");
-        //         // Sacrifice itself
-        //         if rc.senseLead(loc) == 0 {
-        //             rc.disintegrate();
-        //         } else {
-        //             for dir in ALL_MOVE_DIRECTIONS {
-        //                 let l = loc.add(dir);
-        //                 if Mem::closestArchon.isWithinDistanceSquared(l, 13) && rc.canMove(dir) && rc.senseLead(l) == 0 {
-        //                     rc.move(dir);
-        //                     return;
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
+        else if Mem::buildInfo.shouldFarmLead && Mem::closestArchon != null && loc.isWithinDistanceSquared(Mem::closestArchon, 20) {
+            rc.setIndicatorString("SUICIDE MODE");
+            // Sacrifice itself
+            if rc.senseLead(loc) == 0 {
+                Mem::buildInfo.farmedLead();
+                Mem::buildInfo.writeBack();
+                rc.disintegrate();
+            } else {
+                for dir in ALL_MOVE_DIRECTIONS {
+                    let l = loc.add(dir);
+                    if Mem::closestArchon.isWithinDistanceSquared(l, 13) && rc.canMove(dir) && rc.senseLead(l) == 0 {
+                        rc.move(dir);
+                        return;
+                    }
+                }
+            }
+        }
     }
 
     if canMove {
