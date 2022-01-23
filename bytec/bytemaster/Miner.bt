@@ -122,7 +122,7 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
             if !loc.isWithinDistanceSquared(at, 20) {
                 for l in locs {
                     // Assume enemy soldiers we can't see could have moved 1 tile by now
-                    if l != null && loc.isWithinDistanceSquared(l.loc, 20) {
+                    if l != null && loc.isWithinDistanceSquared(l.loc, 25) {
                         l.enemyDamage += 10;
                     }
                 }
@@ -195,6 +195,35 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
                     // The amount of lead that this miner would actually mine in 10 turns, assuming it mines only this tile and so do others
                     let ourPower = (500 / (10 + l.rubble));
                     l.adjacentLead = min(ourPower, l.adjacentLead + lead * ourPower / (ourPower + existingPower));
+                }
+            }
+        }
+    }
+    // 1 gold is worth 7 lead
+    for loc in rc.senseNearbyLocationsWithGold(rc.getType().visionRadiusSquared) {
+        let d0 = at.distanceSquaredTo(loc);
+        // Make sure existing miners won't mine it out in the next 10 turns
+        let existingPower = 0;
+        let tx = loc.x - at.x;
+        let ty = loc.y - at.y;
+        if tx*tx + ty*ty <= 20 {
+            existingPower = miningPowers[(tx + 4) * 9 + 4 + ty];
+        }
+        let lead = rc.senseGold(loc);
+        if d0 < closestD && existingPower < lead {
+            closestLead = loc;
+            closestD = d0;
+        }
+        for l in locs {
+            if l != null {
+                let d = max(abs(l.loc.x - loc.x), abs(l.loc.y - loc.y));
+                if d < l.leadDist {
+                    l.leadDist = d;
+                }
+                if d <= 1 {
+                    // The amount of lead that this miner would actually mine in 10 turns, assuming it mines only this tile and so do others
+                    let ourPower = (500 / (10 + l.rubble));
+                    l.adjacentLead = min(ourPower * 7, l.adjacentLead + 7 * lead * ourPower / (ourPower + existingPower));
                 }
             }
         }
