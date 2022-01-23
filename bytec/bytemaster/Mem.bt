@@ -24,6 +24,7 @@ let buildInfo = BuildInfo();
 // 31: build information
 // 32: income this turn (average income is computed by each archon)
 // 33: lab check in / number of labs
+// 34: builder count
 define ARCHON_IDX_LOC = 0;
 define ENEMY_ARCHON_LOC = 1;
 define ENEMY_ARCHON_LEN = 6;
@@ -39,6 +40,7 @@ define FRIENDLY_ARCHON_LEN = 4;
 define BUILD_INFO_LOC = 31;
 define INCOME_LOC = 32;
 define LAB_COUNT_LOC = 33;
+define BUILDER_COUNT_LOC = 34;
 
 define ENEMY_SOLDIER_KEEP_TURNS = 2;
 
@@ -427,6 +429,16 @@ fn clearLabCount() throws GameActionException {
 }
 fn addLabCount() throws GameActionException {
     rc.writeSharedArray(LAB_COUNT_LOC, rc.readSharedArray(LAB_COUNT_LOC) + 1);
+}
+
+fn getBuilderCount(): i32 throws GameActionException {
+    rc.readSharedArray(BUILDER_COUNT_LOC)
+}
+fn clearBuilderCount() throws GameActionException {
+    rc.writeSharedArray(BUILDER_COUNT_LOC, 0);
+}
+fn addBuilderCount() throws GameActionException {
+    rc.writeSharedArray(BUILDER_COUNT_LOC, rc.readSharedArray(BUILDER_COUNT_LOC) + 1);
 }
 
 fn readArchons() throws GameActionException {

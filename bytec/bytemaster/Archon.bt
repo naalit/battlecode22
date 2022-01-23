@@ -87,7 +87,7 @@ fn averageIncome(): i32 throws GameActionException {
     rc.setIndicatorString("Income this turn: " + income + ", average income: " + sum / incomes.len());
     sum / incomes.len()
 }
-let builderTurns = 0;
+let builderTurns = 30;
 let lead = 0;
 let canMove = true;
 fn turn() throws GameActionException {
@@ -118,6 +118,7 @@ fn turn() throws GameActionException {
         // Move to low rubble
         if Paths::archonMove() {
             rc.transform();
+            rc.writeSharedArray(Mem::FRIENDLY_ARCHON_LOC + archonOrder, Mem::encodeLoc(rc.getLocation()));
             canMove = true;
         }
     } else {
@@ -143,12 +144,12 @@ fn turn() throws GameActionException {
         // Normal archon things
         let needsBuilder = false;
         builderTurns += 1;
-        if income >= 8
-            && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab || builderTurns >= 30)
+        if //income >= 3
+            (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab || builderTurns >= 30)
             && minerCount > 3
             && Mem::nearbyEnemies.len() == 0
         {
-            if Mem::getLabCount() == 0 {
+            if Mem::getLabCount() == 0 || (income >= 8 && Mem::getLabCount() < 3) {
                 if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
                     builderTurns = 0;
                     needsBuilder = true;
@@ -156,7 +157,7 @@ fn turn() throws GameActionException {
                     lead -= RobotType::LABORATORY.buildCostLead;
                 }
                 Mem::buildInfo.queueLab();
-            } else {
+            } else if income >= 8 {
                 if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
                     builderTurns = 0;
                     needsBuilder = true;
@@ -165,7 +166,7 @@ fn turn() throws GameActionException {
                 }
                 Mem::buildInfo.queueWatchtower();
             }
-        } else if income >= 4 && (Mem::buildInfo.shouldBuildLab || Mem::buildInfo.shouldBuildWatchtower) {
+        } else if (income > 3 || Mem::getLabCount() == 0) && (Mem::buildInfo.shouldBuildLab || Mem::buildInfo.shouldBuildWatchtower) {
             if Mem::buildInfo.shouldBuildLab {
                 lead -= RobotType::LABORATORY.buildCostLead;
             } else {
@@ -199,6 +200,10 @@ fn turn() throws GameActionException {
                 spawnSoldier();
             }
         }
+        if rc.isActionReady() && rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold && (rc.getRoundNum() % rc.getArchonCount() == archonOrder
+            || rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold * (rc.getArchonCount() - archonOrder)) {
+            spawnSage();
+        }
 
         if rc.isActionReady() {
             // Try to repair a robot in range.
@@ -231,6 +236,7 @@ fn turn() throws GameActionException {
         Mem::clearMinerCount();
         Mem::clearSoldierCount();
         Mem::clearLabCount();
+        Mem::clearBuilderCount();
     }
     Mem::buildInfo.writeBack();
 }

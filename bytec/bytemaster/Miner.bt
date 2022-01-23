@@ -171,6 +171,7 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
     }
     closestLead = null;
     let closestD = 100000;
+    let closestGold = false;
     for loc in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
         let d0 = at.distanceSquaredTo(loc);
         // Make sure existing miners won't mine it out in the next 10 turns
@@ -210,9 +211,10 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
             existingPower = miningPowers[(tx + 4) * 9 + 4 + ty];
         }
         let lead = rc.senseGold(loc);
-        if d0 < closestD && existingPower < lead {
+        if (d0 < closestD) && existingPower < lead {
             closestLead = loc;
             closestD = d0;
+            closestGold = true;
         }
         for l in locs {
             if l != null {

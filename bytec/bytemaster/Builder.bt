@@ -177,6 +177,7 @@ fn microMove(): bool throws GameActionException {
 
 fn turn() throws GameActionException {
     Mem::buildInfo.read();
+    Mem::addBuilderCount();
 
     let loc = rc.getLocation();
 
@@ -196,12 +197,20 @@ fn turn() throws GameActionException {
                 return;
             }
         }
+        if robot != null && robot.level == 1 && rc.canMutate(robot.location) {
+            rc.mutate(robot.location);
+            Mem::spend(RobotType::ARCHON.getLeadMutateCost(2));
+        }
     }
 
+    let cornerX = if loc.x <= rc.getMapWidth() / 2 { 0 } else { rc.getMapWidth() - 1 };
+    let cornerY = if loc.y <= rc.getMapHeight() / 2 { 0 } else { rc.getMapHeight() - 1 };
+    let corner = MapLocation(cornerX, cornerY);
+
     if bestRepair == null {
-        if Mem::buildInfo.shouldBuildLab && Mem::nearbyEnemies.len() == 0 {
+        if Mem::buildInfo.shouldBuildLab && Mem::nearbyEnemies.len() < 3 {
             let nearbyAllies = Mem::nearbyAllies.len();
-            if Mem::nearbyAllies.len() < 10 {
+            if (Mem::nearbyAllies.len() < 15 || corner.isAdjacentTo(loc)) {
                 let best: Direction = null;
                 let bestRubble = 10000;
                 for dir in ALL_MOVE_DIRECTIONS {
@@ -213,7 +222,7 @@ fn turn() throws GameActionException {
                         }
                     }
                 }
-                if best != null {
+                if best != null && bestRubble < 20 {
                     rc.buildRobot(RobotType::LABORATORY, best);
                     Mem::buildInfo.builtLab();
                     Mem::spend(RobotType::LABORATORY.buildCostLead);
@@ -283,14 +292,12 @@ fn turn() throws GameActionException {
             }
         }
         else if Mem::buildInfo.shouldBuildLab {
-            // if rc.getID() % 2 == 0 {
-                let cornerX = if loc.x <= rc.getMapWidth() / 2 { 0 } else { rc.getMapWidth() - 1 };
-                let cornerY = if loc.y <= rc.getMapHeight() / 2 { 0 } else { rc.getMapHeight() - 1 };
-                let corner = MapLocation(cornerX, cornerY);
-                if !rc.canSenseLocation(corner) {
-                    Paths::target = corner;
+            if rc.getID() % 2 == 0 {
+                if !rc.canSenseLocation(corner) || rc.senseRubble(corner) <= 20 {
+                    Paths::target = corner.add(corner.dirTo(loc));
+                    Paths::targetMove(false);
                 }
-            // }
+            }
         }
         Paths::targetMove(true);
     }
