@@ -227,6 +227,9 @@ fn turn() throws GameActionException {
                     Mem::buildInfo.builtLab();
                     Mem::spend(RobotType::LABORATORY.buildCostLead);
                     Mem::addLabCount();
+                } else if rc.senseRubble(rc.getLocation()) < 20 {
+                    rc.setIndicatorString("Waiting to build lab");
+                    return;
                 }
             }
         } else if towerUpgrade != null && towerUpgrade.type == RobotType::LABORATORY && rc.getTeamLeadAmount(rc.getTeam()) >= RobotType::LABORATORY.buildCostLead && rc.canMutate(towerUpgrade.location) {

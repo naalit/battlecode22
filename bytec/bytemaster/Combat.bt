@@ -294,8 +294,7 @@ fn findSpawnSpace(ty: RobotType): Direction throws GameActionException {
 }
 
 fn combatMicro() throws GameActionException {
-    let canAttack = rc.getActionCooldownTurns() <= 20;
-    let best = microLoc(rc.getType(), rc.getLevel(), canAttack, rc.isMovementReady(), rc.getHealth(), true, true);
+    let best = microLoc(rc.getType(), rc.getLevel(), rc.isActionReady(), rc.isMovementReady(), rc.getHealth(), true, true);
     rc.setIndicatorString("MOVE MICRO: Damage: " + best.enemyDamage + ", rubble: " + best.rubble);
     if best == null {
         println("ERROR! best should not be null, CENTER is always an option");

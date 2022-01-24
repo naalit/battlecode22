@@ -122,7 +122,7 @@ fn turn() throws GameActionException {
             canMove = true;
         }
     } else {
-        if canMove && rc.canTransform() && minerCount >= START_MINERS[archonCount - 1] && rc.senseRubble(rc.getLocation()) > 0 {
+        if canMove && rc.canTransform() && minerCount >= START_MINERS[archonCount - 1] && (Mem::getBuilderCount() > 0 || Mem::getLabCount() > 0) && rc.senseRubble(rc.getLocation()) > 0 {
             let rubble = rc.senseRubble(rc.getLocation());
             let found = false;
             for i in -5..6 {

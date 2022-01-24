@@ -25,7 +25,7 @@ fn averageIncome(): i32 throws GameActionException {
 
 fn turn() throws GameActionException {
     if rc.getMode() == RobotMode::PORTABLE {
-        if Paths::archonMove() {
+        if Paths::archonMove() && rc.canTransform() {
             rc.transform();
         }
     }
@@ -35,7 +35,7 @@ fn turn() throws GameActionException {
 
     // backup for pillars-like maps where the terrain switches
     // we'll probably still lose since we don't anticipate it, but if the other team doesn't either it might be helpful
-    if rc.senseRubble(rc.getLocation()) > 10 && (Mem::getLabCount() > 1 || rc.senseRubble(rc.getLocation()) >= 40) {
+    if rc.senseRubble(rc.getLocation()) > 10 && (Mem::getLabCount() > 1 || rc.senseRubble(rc.getLocation()) >= 40) && rc.canTransform() {
         rc.transform();
     }
 
