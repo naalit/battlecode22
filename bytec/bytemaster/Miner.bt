@@ -11,12 +11,12 @@ define ENEMY_SOLDIER_LEN = 16;
 
 fn preTurn() throws GameActionException {
     // Make sure to mine before we do anything else, in case maintain() and micro goes over on bytecode
+    Mem::addMinerCount();
     tryMine();
 }
 
 let currentCorner = -1;
 fn turn() throws GameActionException {
-    Mem::addMinerCount();
     Mem::minerPassiveCornerSearch();
     if currentCorner != -1 {
         if !Mem::minerPingCorner(currentCorner) {

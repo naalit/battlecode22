@@ -25,6 +25,8 @@ let buildInfo = BuildInfo();
 // 32: income this turn (average income is computed by each archon)
 // 33: lab check in / number of labs
 // 34: builder count
+// 35-36: archon build queue thing
+// 37: alternate miner count
 define ARCHON_IDX_LOC = 0;
 define ENEMY_ARCHON_LOC = 1;
 define ENEMY_ARCHON_LEN = 6;
@@ -41,6 +43,7 @@ define BUILD_INFO_LOC = 31;
 define INCOME_LOC = 32;
 define LAB_COUNT_LOC = 33;
 define BUILDER_COUNT_LOC = 34;
+let BUILD_QUEUE_LOC = 35;
 
 define ENEMY_SOLDIER_KEEP_TURNS = 2;
 

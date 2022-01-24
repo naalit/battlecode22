@@ -31,7 +31,7 @@ fn spawnBuilder() throws GameActionException {
     }
     let dir = Builder::findSpawnSpace();
     if dir != null && rc.canBuildRobot(RobotType::BUILDER, dir) {
-        Mem::addMinerCount();
+        Mem::addBuilderCount();
         rc.buildRobot(RobotType::BUILDER, dir);
     }
 }
@@ -74,6 +74,90 @@ fn spawnSage() throws GameActionException {
     }
 }
 
+enum BuildEntry {
+    Laboratory,
+    Watchtower,
+    StartMiner,
+    LateMiner,
+    Builder,
+    FarmBuilder,
+    Soldier;
+
+    // Higher is better
+    fn priority(): i32 throws GameActionException {
+        match self {
+            StartMiner  => if minersSpawned == 0 || (!nearbyMiner && rc.getRoundNum() > 300) { 70 } else { 40 },
+            LateMiner   => if !nearbyMiner && rc.getRoundNum() > 300 { 50 } else { 20 },
+            Laboratory  => if Mem::getLabCount() == 0 { 60 } else { 30 },
+            Builder     => if Mem::getBuilderCount() == 0 { 80 } else { 25 },
+            FarmBuilder => 50 - nLead / 2,
+            Soldier     => 1,
+            Watchtower  => 10,
+        }
+    }
+
+    fn matches(i: i32): bool {
+        match self {
+            StartMiner  => i == 70 || i == 40,
+            LateMiner   => i == 50 || i == 20,
+            Laboratory  => i == 60 || i == 30,
+            Builder     => i == 80 || i == 25,
+            FarmBuilder => i > 40 && i < 50,
+            Soldier     => i == 1,
+            Watchtower  => i == 10,
+        }
+    }
+
+    fn leadNeeded(): i32 {
+        match self {
+            Laboratory => RobotType::LABORATORY.buildCostLead,
+            Watchtower => RobotType::WATCHTOWER.buildCostLead,
+            StartMiner => RobotType::MINER.buildCostLead,
+            LateMiner => RobotType::MINER.buildCostLead,
+            Builder => RobotType::BUILDER.buildCostLead,
+            FarmBuilder => RobotType::BUILDER.buildCostLead,
+            Soldier => RobotType::SOLDIER.buildCostLead,
+        }
+    }
+
+    fn queue() throws GameActionException {
+        rc.setIndicatorString("Queued: " + self);
+        lastQueued = self.priority();
+        rc.writeSharedArray(Mem::BUILD_QUEUE_LOC, self.priority());
+        rc.writeSharedArray(Mem::BUILD_QUEUE_LOC + 1, self.leadNeeded());
+    }
+
+    fn tryBuildOrQueue(): bool throws GameActionException {
+        let canBuildThis = self.leadNeeded() <= rc.getTeamLeadAmount(rc.getTeam());
+        let existing = rc.readSharedArray(Mem::BUILD_QUEUE_LOC);
+        if existing == 0 {
+            if !canBuildThis { self.queue(); }
+            canBuildThis
+        } else if self.matches(existing) && existing == lastQueued && canBuildThis {
+            rc.writeSharedArray(Mem::BUILD_QUEUE_LOC, 0);
+            true
+        } else if self.priority() > existing {
+            if !canBuildThis { self.queue(); }
+            canBuildThis
+        } else if self.leadNeeded() <= rc.getTeamLeadAmount(rc.getTeam()) - rc.readSharedArray(Mem::BUILD_QUEUE_LOC+1) {//existing.leadNeeded() {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn tryQueue(): bool throws GameActionException {
+        let existing = rc.readSharedArray(Mem::BUILD_QUEUE_LOC);
+        if self.priority() >= existing {
+            self.queue();
+            true
+        } else {
+            false
+        }
+    }
+}
+let lastQueued = 0;
+
 let incomes: [i32] = [; 10];
 let incomeIdx = 0;
 fn averageIncome(): i32 throws GameActionException {
@@ -87,9 +171,12 @@ fn averageIncome(): i32 throws GameActionException {
     rc.setIndicatorString("Income this turn: " + income + ", average income: " + sum / incomes.len());
     sum / incomes.len()
 }
-let builderTurns = 30;
+let builderTurns = 100;
 let lead = 0;
 let canMove = true;
+let minersSpawned = 0;
+let nearbyMiner = false;
+let nLead = 0;
 fn turn() throws GameActionException {
     if archonCount != rc.getArchonCount() {
         archonCount = rc.getArchonCount();
@@ -100,12 +187,14 @@ fn turn() throws GameActionException {
             rc.writeSharedArray(0, archonOrder + 1);
         }
         rc.writeSharedArray(Mem::FRIENDLY_ARCHON_LOC + archonOrder, Mem::encodeLoc(rc.getLocation()));
+        rc.writeSharedArray(Mem::BUILD_QUEUE_LOC, 0);
     }
 
     if archonOrder == 0 {
         Mem::maintainMinerCorners();
         Mem::maintainSoldiers();
         Mem::resetIncome();
+        rc.writeSharedArray(37, Mem::getMinerCount());
     }
     Mem::buildInfo.read();
 
@@ -113,6 +202,14 @@ fn turn() throws GameActionException {
     let soldierCount = Mem::getSoldierCount();
     let income = averageIncome();
     lead = rc.getTeamLeadAmount(rc.getTeam());
+
+    nearbyMiner = false;
+    for i in Mem::nearbyAllies {
+        if i.type == RobotType::MINER {
+            nearbyMiner = true;
+            break;
+        }
+    }
 
     if rc.getMode() == RobotMode::PORTABLE {
         // Move to low rubble
@@ -122,7 +219,7 @@ fn turn() throws GameActionException {
             canMove = true;
         }
     } else {
-        if canMove && rc.canTransform() && minerCount >= START_MINERS[archonCount - 1] && (Mem::getBuilderCount() > 0 || Mem::getLabCount() > 0) && rc.senseRubble(rc.getLocation()) > 0 {
+        if canMove && rc.canTransform() && minersSpawned >= 2 && (Mem::getBuilderCount() > 0 || Mem::getLabCount() > 0) && rc.senseRubble(rc.getLocation()) > 0 {
             let rubble = rc.senseRubble(rc.getLocation());
             let found = false;
             for i in -5..6 {
@@ -142,6 +239,15 @@ fn turn() throws GameActionException {
         }
 
         // Normal archon things
+        rc.setIndicatorString("Build queue: priority " + rc.readSharedArray(Mem::BUILD_QUEUE_LOC) + "for lead " + rc.readSharedArray(Mem::BUILD_QUEUE_LOC + 1));
+        if rc.readSharedArray(Mem::BUILD_QUEUE_LOC) == lastQueued {
+            rc.writeSharedArray(Mem::BUILD_QUEUE_LOC, 0);
+            lastQueued = 0;
+        }
+        if Mem::buildInfo.shouldBuildLab && Mem::getLabCount() >= 3 {
+            Mem::buildInfo.builtLab();
+        }
+
         let needsBuilder = false;
         builderTurns += 1;
         if //income >= 3
@@ -149,60 +255,48 @@ fn turn() throws GameActionException {
             && minerCount > 3
             && Mem::nearbyEnemies.len() == 0
         {
-            if Mem::getLabCount() == 0 || (income >= 8 && Mem::getLabCount() < 3) {
-                if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
+            if Mem::getLabCount() == 0 || (income >= 8 && Mem::getLabCount() < 3) && BuildEntry::Laboratory.tryQueue() {
+                if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead && Mem::getBuilderCount() < rc.getArchonCount() * 3 {
                     builderTurns = 0;
                     needsBuilder = true;
-                } else {
-                    lead -= RobotType::LABORATORY.buildCostLead;
                 }
                 Mem::buildInfo.queueLab();
-            } else if income >= 8 {
-                if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead {
+            } else if income >= 8 && BuildEntry::Watchtower.tryQueue() {
+                if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead && Mem::getBuilderCount() < rc.getArchonCount() * 3 {
                     builderTurns = 0;
                     needsBuilder = true;
-                } else {
-                    lead -= RobotType::WATCHTOWER.buildCostLead;
                 }
                 Mem::buildInfo.queueWatchtower();
             }
-        } else if (income > 3 || Mem::getLabCount() == 0) && (Mem::buildInfo.shouldBuildLab || Mem::buildInfo.shouldBuildWatchtower) {
-            if Mem::buildInfo.shouldBuildLab {
-                lead -= RobotType::LABORATORY.buildCostLead;
-            } else {
-                lead -= RobotType::WATCHTOWER.buildCostLead;
-            }
-        } else if income <= 3 && (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab) {
+        } else if income <= 3 && (Mem::buildInfo.shouldBuildWatchtower || (Mem::buildInfo.shouldBuildLab && Mem::getLabCount() > 0)) {
             Mem::buildInfo.builtWatchtower();
             Mem::buildInfo.builtLab();
         }
 
         // Don't let one Archon dominate
         // They take turns spawning, or they can override the order if there's enough for each other archon to spawn a soldier to defend itself
-        if rc.getRoundNum() % rc.getArchonCount() == archonOrder
-            || lead >= RobotType::MINER.buildCostLead * (rc.getArchonCount() - archonOrder) {
-            let nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
+        nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
+        if rc.isActionReady() {
             let targetMinerCount = 6 + (rc.getMapWidth() + rc.getMapHeight())/20;
             let startMinerCount = START_MINERS[archonCount - 1];
-            if needsBuilder {
-                // rc.setIndicatorString("NORMAL BUILDER");
-                spawnBuilder();
-            } else if minerCount < targetMinerCount && (minerCount < startMinerCount || minerCount < soldierCount) {
+            if minerCount < startMinerCount && BuildEntry::StartMiner.tryBuildOrQueue() {
+                minersSpawned += 1;
                 spawnMiner();
-            } else if ((nLead < 20 && rc.getRoundNum() > 300)) && Mem::nearbyEnemies.len() < min(3, Mem::nearbyAllies.len()) {
-                // This builder will suicide after possibly healing the archon
-                // rc.setIndicatorString("SUICIDE BUILDER");
+            } else if (minerCount < targetMinerCount || (!nearbyMiner && rc.getRoundNum() > 300)) && BuildEntry::LateMiner.tryBuildOrQueue() {
+                spawnMiner();
+            } else if needsBuilder && Mem::getBuilderCount() < minerCount && BuildEntry::Builder.tryBuildOrQueue() {
+                spawnBuilder();
+            } else if nLead < 20 && rc.getRoundNum() > 300 && Mem::nearbyEnemies.len() < min(3, Mem::nearbyAllies.len()) && BuildEntry::FarmBuilder.tryBuildOrQueue() {
                 Mem::buildInfo.queueLeadFarming();
                 spawnSuicideBuilder();
-            } else if rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold {
+            // All archons basically make sages as fast as possible, so we assume that later archons will build sages and make them take turns
+            // This is not always true, but it's a pretty good estimate
+            } else if rc.isActionReady() && rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold && (rc.getRoundNum() % rc.getArchonCount() == archonOrder
+                || rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold * (rc.getArchonCount() - archonOrder)) {
                 spawnSage();
-            } else {
+            } else if rc.getRoundNum() % rc.getArchonCount() == archonOrder && BuildEntry::Soldier.tryBuildOrQueue() {
                 spawnSoldier();
             }
-        }
-        if rc.isActionReady() && rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold && (rc.getRoundNum() % rc.getArchonCount() == archonOrder
-            || rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold * (rc.getArchonCount() - archonOrder)) {
-            spawnSage();
         }
 
         if rc.isActionReady() {
@@ -233,7 +327,11 @@ fn turn() throws GameActionException {
         Mem::spend(spent);
     }
     if archonOrder == archonCount - 1 {
+        let diff = Mem::getMinerCount() - rc.readSharedArray(37);
         Mem::clearMinerCount();
+        for i in 0..diff {
+            Mem::addMinerCount();
+        }
         Mem::clearSoldierCount();
         Mem::clearLabCount();
         Mem::clearBuilderCount();
