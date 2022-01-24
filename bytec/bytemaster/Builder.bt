@@ -77,21 +77,23 @@ fn microLoc(include_center: bool, include_others: bool): LocInfo throws GameActi
             }
         }
     }
-    for i in Mem::nearbyEnemies {
-        if i.type.damage > 0 {
+    for bot in Mem::nearbyEnemies {
+        if bot.type.damage > 0 {
             existsDamage = true;
-            if i.mode.canAct {
-                for l in locs {
-                    if l != null {
+            if bot.mode.canAct {
+                for loc in locs {
+                    if loc != null {
                         // Assume they could move to attack us next turn, but give it a 2/3 chance
-                        let d = i.location.distanceSquaredTo(l.loc);
-                        if d <= max(20, i.type.actionRadiusSquared) {
-                            if d <= i.type.actionRadiusSquared {
-                                let rubble = rc.senseRubble(i.location);
-                                l.enemyDamage += (i.type.getDamage(i.level) * 1000 / i.type.actionCooldown) / (10 + rubble);
-                            } else {
-                                let rubble = rc.senseRubble(i.location.add(i.location.dirTo(l.loc)));
-                                l.enemyDamage += (i.type.getDamage(i.level) * 1000 / i.type.actionCooldown) / (10 + rubble) * 2 / 3;
+                        let d = bot.location.distanceSquaredTo(loc.loc);
+                        // Assume they could move to attack us next turn, but give it a 2/3 chance
+                        if d <= bot.type.actionRadiusSquared {
+                            let rubble = rc.senseRubble(bot.location);
+                            loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
+                        } else {
+                            let towardsLoc = bot.location.add(bot.location.dirTo(loc.loc));
+                            if towardsLoc.isWithinDistanceSquared(loc.loc, bot.type.actionRadiusSquared) {
+                                let rubble = rc.senseRubble(bot.location.add(bot.location.dirTo(loc.loc)));
+                                loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble) * 2 / 3;
                             }
                         }
                     }
