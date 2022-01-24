@@ -27,7 +27,7 @@ fn turn() throws GameActionException {
         if !microMove() {
             if closestLead != null {
                 // If micro didn't move to the adjacent location, it was for a reason
-                if closestLead.isWithinDistanceSquared(rc.getLocation(), 8) {
+                if closestLead.isWithinDistanceSquared(rc.getLocation(), 8) && rc.canMove(rc.getLocation().dirTo(closestLead)) {
                     return;
                 }
                 let bestLoc: MapLocation = closestLead;
@@ -272,11 +272,39 @@ fn microMove(): bool throws GameActionException {
     }
 }
 
+// always returns true if either point is in the middle
+fn inline sameSide(a: MapLocation, b: MapLocation): bool {
+    let w2 = rc.getMapWidth() / 2;
+    let h2 = rc.getMapHeight() / 2;
+    ((a.x <= w2 && b.x <= w2) || (a.x >= w2 && b.x >= w2) &&
+     (a.y <= h2 && b.y <= h2) || (a.y >= h2 && b.y >= h2))
+}
+fn shouldOffensiveMine(): bool throws GameActionException {
+    if Mem::closestArchon == null {
+        return false;
+    }
+    let at = rc.getLocation();
+    let friendlyDist = Mem::closestArchon.distanceSquaredTo(at);
+    let enemyDist = 10000;
+    for i in Mem::enemyArchons {
+        let d = i.distanceSquaredTo(at);
+        if d < enemyDist {
+            enemyDist = d;
+        }
+    }
+    if enemyDist == 10000 {
+        let onOurSide = sameSide(at, Mem::closestArchon);
+        !onOurSide && Mem::nearbyEnemies.len() > Mem::nearbyAllies.len()
+    } else {
+        enemyDist < friendlyDist && Mem::nearbyEnemies.len() >= Mem::nearbyAllies.len()
+    }
+}
+
 // Returns an adjacent location that we can continue mining
 fn tryMine() throws GameActionException {
     let at = rc.getLocation();
-    let onOurSide = Mem::closestArchon == null || (abs(at.x - Mem::closestArchon.x) <= rc.getMapWidth() / 2 || abs(at.y - Mem::closestArchon.y) <= rc.getMapHeight() / 2);
-    let offensiveMining = onOurSide && Mem::nearbyEnemies.len() > max(2, Mem::nearbyAllies.len());
+    let offensiveMining = shouldOffensiveMine();
+    rc.setIndicatorString("Offensive? " + offensiveMining);
     for dir in allDirections() {
         let loc = at.add(dir);
         while rc.canMineGold(loc) {

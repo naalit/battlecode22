@@ -20,10 +20,7 @@ fn turn() throws GameActionException {
     } else if rc.getHealth() <= Combat::RETREAT_HEALTH && Mem::closestArchon != null && !Mem::closestArchon.isWithinDistanceSquared(loc, RobotType::ARCHON.actionRadiusSquared) {
         Paths::target = Mem::closestArchon;
         Paths::targetMove(false);
-        return;
-    }
-
-    if Mem::closestArchon != null && Mem::closestArchon.isWithinDistanceSquared(loc, RobotType::ARCHON.actionRadiusSquared) && rc.getHealth() < rc.getType().health {
+    } else if Mem::closestArchon != null && Mem::closestArchon.isWithinDistanceSquared(loc, RobotType::ARCHON.actionRadiusSquared) && rc.getHealth() < rc.getType().health {
         // Try to stay about 13 units^2 of the archon so we're not in the way
         // If we need to heal, make sure we stay within the archon's action radius as well
         // and stay nearby until we're fully healed and can go back to the fight
@@ -54,37 +51,43 @@ fn turn() throws GameActionException {
         if closest != null {
             Paths::target = loc.add(closest).add(closest);
             Paths::targetMove(false);
-            return;
+        } else {
+            Paths::targetMove(true);
         }
-    }
-
-    let closestSoldier = Mem::getClosestSoldier(loc);
-    if rc.getHealth() > 30 && closestSoldier != null && closestSoldier.isWithinDistanceSquared(loc, 49) { //&& !rc.canSenseLocation(closestSoldier) {
-        Paths::target = closestSoldier;
+    } else {
+        let closestSoldier = Mem::getClosestSoldier(loc);
+        if rc.getHealth() > 30 && closestSoldier != null && closestSoldier.isWithinDistanceSquared(loc, 49) { //&& !rc.canSenseLocation(closestSoldier) {
+            Paths::target = closestSoldier;
+            Paths::targetMove(true);
+        } else if Mem::enemyArchons.len() > 0 {
+            let closest: MapLocation = null;
+            let closest_d = 100000;
+            for i in Mem::enemyArchons {
+                let d = i.distanceSquaredTo(rc.getLocation());
+                if d < closest_d {
+                    closest = i;
+                    closest_d = d;
+                }
+            }
+            if closest != null {
+                Paths::target = closest;
+                Paths::targetMove(false);
+                wasTargetingArchon = true;
+            }
+        } else if wasTargetingArchon {
+            wasTargetingArchon = false;
+            Paths::target = null;
+        }
         Paths::targetMove(true);
-        return;
     }
 
-    if Mem::enemyArchons.len() > 0 {
-        let closest: MapLocation = null;
-        let closest_d = 100000;
-        for i in Mem::enemyArchons {
-            let d = i.distanceSquaredTo(rc.getLocation());
-            if d < closest_d {
-                closest = i;
-                closest_d = d;
+    if rc.isActionReady() {
+        Mem::nearbyEnemies = rc.senseNearbyRobotsT(rc.getType().actionRadiusSquared, rc.getTeam().opponent());
+        if Mem::nearbyEnemies.len() > 0 {
+            let best = Combat::microTarget(rc.getType().getDamage(rc.getLevel()), true);
+            if best != null {
+                rc.attack(best.location);
             }
         }
-        if closest != null {
-            Paths::target = closest;
-            Paths::targetMove(false);
-            wasTargetingArchon = true;
-            return;
-        }
-    } else if wasTargetingArchon {
-        wasTargetingArchon = false;
-        Paths::target = null;
     }
-
-    Paths::targetMove(true);
 }

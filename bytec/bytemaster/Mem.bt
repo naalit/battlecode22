@@ -27,6 +27,7 @@ let buildInfo = BuildInfo();
 // 34: builder count
 // 35-36: archon build queue thing
 // 37: alternate miner count
+// 38: builders claim lab locations so only one is waiting
 define ARCHON_IDX_LOC = 0;
 define ENEMY_ARCHON_LOC = 1;
 define ENEMY_ARCHON_LEN = 6;
@@ -44,6 +45,7 @@ define INCOME_LOC = 32;
 define LAB_COUNT_LOC = 33;
 define BUILDER_COUNT_LOC = 34;
 let BUILD_QUEUE_LOC = 35;
+let LAB_CLAIM_LOC = 38;
 
 define ENEMY_SOLDIER_KEEP_TURNS = 2;
 

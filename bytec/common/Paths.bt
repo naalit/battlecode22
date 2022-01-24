@@ -21,6 +21,16 @@ fn pathfindGreedy(): Direction throws GameActionException {
     let best_pass = 100;
     let prev_dist2 = loc.distanceSquaredTo(target);
     for i in options {
+        let found = false;
+        for l in lastLocs {
+            if l != null && i == l {
+                found = true;
+                break;
+            }
+        }
+        if found {
+            continue;
+        }
         if i == target && rc.canMove(loc.dirTo(i)) {
             best = i;
             best_pass = -1;

@@ -305,12 +305,11 @@ fn combatMicro() throws GameActionException {
     let shouldAttack = true;
     let abyssValue = 0;
     if isSage {
-        let onOurSide = Mem::closestArchon == null || (abs(at.x - Mem::closestArchon.x) <= rc.getMapWidth() / 2 || abs(at.y - Mem::closestArchon.y) <= rc.getMapHeight() / 2);
-        let offensiveMining = onOurSide && Mem::nearbyEnemies.len() > max(2, Mem::nearbyAllies.len());
-        if offensiveMining {
-            abyssValue = rc.senseNearbyLocationsWithLeadAt(best.loc, rc.getType().actionRadiusSquared, 2).len() + 7 * rc.senseNearbyLocationsWithGoldAt(best.loc, rc.getType().actionRadiusSquared).len();
-            abyssValue *= 10;
-        }
+        // Abyss is turned off for now because it kept losing
+        // if Miner::shouldOffensiveMine() {
+        //     abyssValue = rc.senseNearbyLocationsWithLeadAt(best.loc, rc.getType().actionRadiusSquared, 2).len() + 7 * rc.senseNearbyLocationsWithGoldAt(best.loc, rc.getType().actionRadiusSquared).len();
+        //     abyssValue *= 10;
+        // }
         shouldAttack = best.attackDamage > max(best.furyHP, best.chargeHP) && best.attackDamage > abyssValue;
     }
     if shouldAttack && bestNow != null && cloc.bestDamage > best.bestDamage {

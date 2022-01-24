@@ -227,8 +227,9 @@ fn turn() throws GameActionException {
                     Mem::buildInfo.builtLab();
                     Mem::spend(RobotType::LABORATORY.buildCostLead);
                     Mem::addLabCount();
-                } else if rc.senseRubble(rc.getLocation()) < 20 {
+                } else if rc.senseRubble(rc.getLocation()) < 20 && rc.readSharedArray(Mem::LAB_CLAIM_LOC) == 0 {
                     rc.setIndicatorString("Waiting to build lab");
+                    rc.writeSharedArray(Mem::LAB_CLAIM_LOC, 1);
                     return;
                 }
             }
@@ -255,7 +256,8 @@ fn turn() throws GameActionException {
                 }
             }
         }
-        else if Mem::buildInfo.shouldFarmLead && Mem::closestArchon != null && loc.isWithinDistanceSquared(Mem::closestArchon, 20) {
+
+        if Mem::buildInfo.shouldFarmLead && Mem::closestArchon != null && loc.isWithinDistanceSquared(Mem::closestArchon, 20) {
             rc.setIndicatorString("SUICIDE MODE");
             // Sacrifice itself
             if rc.senseLead(loc) == 0 {
@@ -293,8 +295,7 @@ fn turn() throws GameActionException {
                     Paths::target = closest;
                 }
             }
-        }
-        else if Mem::buildInfo.shouldBuildLab {
+        } else if Mem::buildInfo.shouldBuildLab && rc.readSharedArray(Mem::LAB_CLAIM_LOC) == 0 {
             if rc.getID() % 2 == 0 {
                 if !rc.canSenseLocation(corner) || rc.senseRubble(corner) <= 20 {
                     Paths::target = corner.add(corner.dirTo(loc));
