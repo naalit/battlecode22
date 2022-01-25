@@ -39,7 +39,7 @@ fn turn() throws GameActionException {
         rc.transform();
     }
 
-    if rc.canTransmute() && rc.getTransmutationRate() <= 7 {
+    if rc.canTransmute() && rc.getTransmutationRate() <= 7 && (rc.readSharedArray(37) > 0 || income > Mem::getLabCount() * rc.getTransmutationRate()) {
         rc.transmute();
         Mem::spend(rc.getTransmutationRate());
     }

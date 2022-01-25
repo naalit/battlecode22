@@ -92,7 +92,7 @@ enum BuildEntry {
             Builder     => if Mem::getBuilderCount() == 0 { 80 } else { 25 },
             FarmBuilder => 50 - nLead / 2,
             Soldier     => 1,
-            Watchtower  => 10,
+            Watchtower  => 26,
         }
     }
 
@@ -104,7 +104,7 @@ enum BuildEntry {
             Builder     => i == 80 || i == 25,
             FarmBuilder => i > 40 && i < 50,
             Soldier     => i == 1,
-            Watchtower  => i == 10,
+            Watchtower  => i == 26,
         }
     }
 

@@ -155,8 +155,12 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
     }
     // 9x9 in units of lead mined per 10 turns
     let miningPowers: [i32] = [; 81];
+    let isMiner = false;
     for i in Mem::nearbyAllies {
         if i.type == RobotType::MINER {
+            ifdef MOST_LEAD {
+                isMiner = true;
+            }
             let x = i.location.x - at.x;
             let y = i.location.y - at.y;
             let rubble = rc.senseRubble(i.location);
@@ -174,6 +178,7 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
     closestLead = null;
     let closestD = 100000;
     let closestGold = false;
+    let closestM = 0;
     for loc in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
         let d0 = at.distanceSquaredTo(loc);
         // Make sure existing miners won't mine it out in the next 10 turns
@@ -184,9 +189,17 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
             existingPower = miningPowers[(tx + 4) * 9 + 4 + ty];
         }
         let lead = rc.senseLead(loc);
-        if d0 < closestD && existingPower < lead {
-            closestLead = loc;
-            closestD = d0;
+        if isMiner {
+            if (lead > closestM || (lead == closestM && d0 < closestD)) && existingPower < lead {
+                closestM = lead;
+                closestLead = loc;
+                closestD = d0;
+            }
+        } else {
+            if d0 < closestD && existingPower < lead {
+                closestLead = loc;
+                closestD = d0;
+            }
         }
         for l in locs {
             if l != null {

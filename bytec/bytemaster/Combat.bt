@@ -6,7 +6,8 @@ use Common::*;
 use RobotPlayer::rc;
 
 let RETREAT_HEALTH = 15;
-let KILL_VALUE = 20;
+define ABYSS_VALUE = 5;
+define KILL_VALUE = 20;
 let at: MapLocation;
 let actionRadius: i32;
 let nearbyFriendlyHP: i32;
@@ -324,10 +325,11 @@ fn combatMicro() throws GameActionException {
     let abyssValue = 0;
     if isSage {
         // Abyss is turned off for now because it kept losing
-        // if Miner::shouldOffensiveMine() {
-        //     abyssValue = rc.senseNearbyLocationsWithLeadAt(best.loc, rc.getType().actionRadiusSquared, 2).len() + 7 * rc.senseNearbyLocationsWithGoldAt(best.loc, rc.getType().actionRadiusSquared).len();
-        //     abyssValue *= 10;
-        // }
+        ifdef ABYSS_VALUE
+        if Miner::shouldOffensiveMine() {
+            abyssValue = rc.senseNearbyLocationsWithLeadAt(best.loc, rc.getType().actionRadiusSquared, 2).len() + 7 * rc.senseNearbyLocationsWithGoldAt(best.loc, rc.getType().actionRadiusSquared).len();
+            abyssValue *= ABYSS_VALUE;
+        }
         shouldAttack = best.attackDamage > max(best.furyHP, best.chargeHP) && best.attackDamage > abyssValue;
     }
     if !waitAttack && shouldAttack && bestNow != null && cloc.bestDamage > best.bestDamage {
@@ -337,6 +339,26 @@ fn combatMicro() throws GameActionException {
     }
     if best.loc != at {
         rc.move(at.dirTo(best.loc));
+    }
+    if rc.isActionReady() && !waitAttack {
+        let visRadius = rc.getType().visionRadiusSquared;
+        let units = rc.senseNearbyRobotsT(visRadius, rc.getTeam().opponent());
+        for i in units {
+            // We couldn't see it last turn
+            if !i.location.isWithinDistanceSquared(at, visRadius) {
+                let damage = damageValue(selfDamage, i);
+                if damage > best.bestDamage {
+                    if i.location.isWithinDistanceSquared(at, rc.getType().actionRadiusSquared) {
+                        bestThen = i;
+                        best.bestDamage = damage;
+                    }
+                    // } else if (isSage || best.rubble > 20) {
+                    //     waitAttack = true;
+                    // }
+                    // break;
+                }
+            }
+        }
     }
     if !waitAttack && shouldAttack && bestThen != null && rc.canAttack(bestThen.location) {
         rc.attack(bestThen.location);
