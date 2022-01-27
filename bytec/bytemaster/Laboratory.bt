@@ -25,23 +25,29 @@ fn averageIncome(): i32 throws GameActionException {
 
 fn turn() throws GameActionException {
     if rc.getMode() == RobotMode::PORTABLE {
-        if Paths::archonMove() && rc.canTransform() {
-            rc.transform();
+        if Mem::nearbyAllies.len() < 10 {
+            if Paths::archonMove() && rc.canTransform() {
+                rc.transform();
+            }
+        } else {
+            Paths::targetMove(true);
         }
     }
 
     Mem::addLabCount();
     let income = averageIncome();
+    let freeLead = rc.readSharedArray(Mem::FREE_LEAD_LOC);
 
     // backup for pillars-like maps where the terrain switches
     // we'll probably still lose since we don't anticipate it, but if the other team doesn't either it might be helpful
-    if rc.senseRubble(rc.getLocation()) > 10 && (Mem::getLabCount() > 1 || rc.senseRubble(rc.getLocation()) >= 40) && rc.canTransform() {
+    if (rc.senseRubble(rc.getLocation()) > 10 || Mem::nearbyAllies.len() >= 10) && (Mem::getLabCount() > 1 || rc.senseRubble(rc.getLocation()) >= 40) && rc.canTransform() {
         rc.transform();
     }
 
-    if rc.canTransmute() && rc.getTransmutationRate() <= 7 && (rc.readSharedArray(37) > 0 || income > Mem::getLabCount() * rc.getTransmutationRate()) {
+    if rc.canTransmute() && rc.getTransmutationRate() <= 7 && (rc.getTransmutationRate() <= freeLead || Mem::getLabCount() == 1) {
         rc.transmute();
         Mem::spend(rc.getTransmutationRate());
+        rc.writeSharedArray(Mem::FREE_LEAD_LOC, max(0, freeLead - rc.getTransmutationRate()));
     }
 
     if rc.getTransmutationRate() > 3 && rc.getTransmutationRate() < 12 {

@@ -8,6 +8,7 @@ use RobotPlayer::rc;
 // Copied from Mem since we want to inline them
 define ENEMY_SOLDIER_LOC = 15;
 define ENEMY_SOLDIER_LEN = 16;
+define MOST_LEAD = true;
 
 fn preTurn() throws GameActionException {
     // Make sure to mine before we do anything else, in case maintain() and micro goes over on bytecode
@@ -47,7 +48,7 @@ fn turn() throws GameActionException {
             } else if currentCorner != -1 {
                 Paths::target = Mem::cornerLocs[currentCorner];
                 Paths::targetMove(true);
-            } else {
+            } else if rc.getID() % 3 == 0 {
                 currentCorner = Mem::minerClaimCorner();
                 if currentCorner != -1 {
                     Paths::target = Mem::cornerLocs[currentCorner];
@@ -55,6 +56,11 @@ fn turn() throws GameActionException {
                 } else {
                     Paths::targetMove(true);
                 }
+            } else if rc.getID() % 3 == 1 && Mem::closestArchon != null && !rc.canSenseLocation(Mem::closestArchon) && rc.getRoundNum() > 100 {
+                Paths::target = Mem::closestArchon;
+                Paths::targetMove(true);
+            } else {
+                Paths::targetMove(true);
             }
         }
     } else {
@@ -98,6 +104,7 @@ fn locBetter(old: LocInfo, new: LocInfo): bool {
 
 let closestLead: MapLocation = null;
 let cloc: LocInfo = null;
+let isMiner = false;
 fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameActionException {
     let at = rc.getLocation();
     let n: LocInfo = null;
@@ -155,12 +162,9 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
     }
     // 9x9 in units of lead mined per 10 turns
     let miningPowers: [i32] = [; 81];
-    let isMiner = false;
     for i in Mem::nearbyAllies {
         if i.type == RobotType::MINER {
-            ifdef MOST_LEAD {
-                isMiner = true;
-            }
+            isMiner = true;
             let x = i.location.x - at.x;
             let y = i.location.y - at.y;
             let rubble = rc.senseRubble(i.location);
@@ -189,7 +193,7 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
             existingPower = miningPowers[(tx + 4) * 9 + 4 + ty];
         }
         let lead = rc.senseLead(loc);
-        if isMiner {
+        if MOST_LEAD && isMiner {
             if (lead > closestM || (lead == closestM && d0 < closestD)) && existingPower < lead {
                 closestM = lead;
                 closestLead = loc;
@@ -317,6 +321,9 @@ fn tryMine() throws GameActionException {
         while rc.canMineGold(loc) {
             rc.mineGold(loc);
         }
+    }
+    for dir in allDirections() {
+        let loc = at.add(dir);
         // Leave 1 so it regenerates
         while rc.canMineLead(loc) && (offensiveMining || rc.senseLead(loc) > 1) {
             rc.mineLead(loc);
