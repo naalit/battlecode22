@@ -8,7 +8,7 @@ use RobotPlayer::rc;
 // What number archon this is, i.e. how many archons go before it each turn
 let archonOrder = 0;
 let archonCount = 0;
-let START_MINERS: [i32] = [3, 4, 6, 7];
+let START_MINERS: [i32] = [3, 4, 4, 4];
 
 fn preTurn() throws GameActionException {
 
@@ -21,6 +21,7 @@ fn spawnMiner() throws GameActionException {
     let dir = Miner::findSpawnSpace();
     if dir != null && rc.canBuildRobot(RobotType::MINER, dir) {
         Mem::addMinerCount();
+        Mem::addFreeMiners();
         rc.buildRobot(RobotType::MINER, dir);
     }
 }
@@ -286,7 +287,7 @@ fn microMove(): bool throws GameActionException {
 
 define MAX_MOBILE_TURNS = 40;
 let mobileTurns = 0;
-let incomes: [i32] = [; 10];
+let incomes: [i32] = [; 30];
 let incomeIdx = 0;
 fn averageIncome(): i32 throws GameActionException {
     let income = Mem::readIncome();
@@ -299,6 +300,21 @@ fn averageIncome(): i32 throws GameActionException {
     rc.setIndicatorString("Income this turn: " + income + ", average income: " + sum / incomes.len());
     sum / incomes.len()
 }
+
+let freeMinerValues: [i32] = [; 30];
+let freeMinerIdx = 0;
+fn averageFreeMiners(): i32 throws GameActionException {
+    let n = Mem::getFreeMiners();
+    freeMinerValues[freeMinerIdx] = n;
+    freeMinerIdx = (freeMinerIdx + 1) % freeMinerValues.len();
+    let sum = 0;
+    for i in freeMinerValues {
+        sum += i;
+    }
+    // rc.setIndicatorString("Income this turn: " + income + ", average income: " + sum / incomes.len());
+    sum / freeMinerValues.len()
+}
+
 let builderTurns = 100;
 let lead = 0;
 let canMove = true;
@@ -342,6 +358,7 @@ fn turn() throws GameActionException {
     let minerCount = Mem::getMinerCount();
     let soldierCount = Mem::getSoldierCount();
     let income = averageIncome();
+    let freeMiners = averageFreeMiners();
     lead = rc.getTeamLeadAmount(rc.getTeam());
 
     nearbyMiner = false;
@@ -453,11 +470,14 @@ fn turn() throws GameActionException {
         nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
         if rc.isActionReady() {
             let targetMinerCount = 8 + (rc.getMapWidth() + rc.getMapHeight())/10;
+            let targetFreeMiners = max(1, minerCount / 4);
+            // let freeMinerPercent = Mem::getFreeMiners() * 100  / minerCount;
             let startMinerCount = START_MINERS[archonCount - 1];
             if minerCount < startMinerCount && BuildEntry::StartMiner.tryBuildOrQueue() {
                 minersSpawned += 1;
                 spawnMiner();
-            } else if (minerCount < targetMinerCount || (!nearbyMiner && rc.getRoundNum() > 300)) && BuildEntry::LateMiner.tryBuildOrQueue() {
+            } else if freeMiners < targetFreeMiners && BuildEntry::LateMiner.tryBuildOrQueue() {
+                minersSpawned += 1;
                 spawnMiner();
             } else if needsBuilder && Mem::getBuilderCount() < minerCount && BuildEntry::Builder.tryBuildOrQueue() {
                 spawnBuilder();
@@ -496,7 +516,7 @@ fn turn() throws GameActionException {
             }
         }
 
-        if rc.canTransform() && (Mem::getLabCount() > 0 && minersSpawned >= 2 && Mem::nearbyEnemies.len() == 0) || (minersSpawned > 0 && Mem::nearbyEnemies.len() > 2 * Mem::nearbyAllies.len()) {
+        if rc.canTransform() && ((Mem::getLabCount() > 0 && minerCount >= 4 && Mem::nearbyEnemies.len() == 0) || (minersSpawned > 0 && Mem::nearbyEnemies.len() > 2 * Mem::nearbyAllies.len())) {
             rc.transform();
         }
     }
@@ -508,6 +528,7 @@ fn turn() throws GameActionException {
     if archonOrder == archonCount - 1 {
         let diff = Mem::getMinerCount() - rc.readSharedArray(37);
         Mem::clearMinerCount();
+        Mem::clearFreeMiners();
         for i in 0..diff {
             Mem::addMinerCount();
         }

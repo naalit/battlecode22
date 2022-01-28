@@ -13,9 +13,13 @@ define MOST_LEAD = true;
 fn preTurn() throws GameActionException {
     // Make sure to mine before we do anything else, in case maintain() and micro goes over on bytecode
     Mem::addMinerCount();
+    if isFree {
+        Mem::addFreeMiners();
+    }
     tryMine();
 }
 
+let isFree = true;
 let currentCorner = -1;
 fn turn() throws GameActionException {
     Mem::minerPassiveCornerSearch();
@@ -43,23 +47,29 @@ fn turn() throws GameActionException {
                         }
                     }
                 }
+                isFree = false;
                 Paths::target = bestLoc;
                 Paths::targetMove(false);
             } else if currentCorner != -1 {
+                isFree = false;
                 Paths::target = Mem::cornerLocs[currentCorner];
                 Paths::targetMove(true);
             } else if rc.getID() % 3 == 0 || rc.getRoundNum() < 100 {
                 currentCorner = Mem::minerClaimCorner();
                 if currentCorner != -1 {
+                    isFree = false;
                     Paths::target = Mem::cornerLocs[currentCorner];
                     Paths::targetMove(true);
                 } else {
+                    isFree = true;
                     Paths::targetMove(true);
                 }
             } else if rc.getID() % 3 == 1 && rc.getRoundNum() > 100 && Mem::closestArchon != null && !rc.canSenseLocation(Mem::closestArchon) && rc.getRoundNum() > 100 {
+                isFree = false;
                 Paths::target = Mem::closestArchon;
                 Paths::targetMove(true);
             } else {
+                isFree = true;
                 Paths::targetMove(true);
             }
         }
@@ -103,6 +113,7 @@ fn locBetter(old: LocInfo, new: LocInfo): bool {
 }
 
 let closestLead: MapLocation = null;
+let closestM = 0;
 let cloc: LocInfo = null;
 let isMiner = false;
 fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameActionException {
@@ -182,7 +193,7 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
     closestLead = null;
     let closestD = 100000;
     let closestGold = false;
-    let closestM = 0;
+    closestM = 0;
     for loc in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
         let d0 = at.distanceSquaredTo(loc);
         // Make sure existing miners won't mine it out in the next 10 turns

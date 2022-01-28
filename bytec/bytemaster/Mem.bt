@@ -30,6 +30,7 @@ let buildInfo = BuildInfo();
 // 37: alternate miner count
 // 38: builders claim lab locations so only one is waiting
 // 39: disposable income
+// 40: number of unoccupied miners
 define ARCHON_IDX_LOC = 0;
 define ENEMY_ARCHON_LOC = 1;
 define ENEMY_ARCHON_LEN = 6;
@@ -49,6 +50,7 @@ define BUILDER_COUNT_LOC = 34;
 let BUILD_QUEUE_LOC = 35;
 let LAB_CLAIM_LOC = 38;
 let FREE_LEAD_LOC = 39;
+let FREE_MINER_LOC = 40;
 
 define ENEMY_SOLDIER_KEEP_TURNS = 5;
 
@@ -427,6 +429,16 @@ fn minerPassiveCornerSearch() throws GameActionException {
             }
         }
     }
+}
+
+fn getFreeMiners(): i32 throws GameActionException {
+    rc.readSharedArray(FREE_MINER_LOC)
+}
+fn clearFreeMiners() throws GameActionException {
+    rc.writeSharedArray(FREE_MINER_LOC, 0);
+}
+fn addFreeMiners() throws GameActionException {
+    rc.writeSharedArray(FREE_MINER_LOC, rc.readSharedArray(FREE_MINER_LOC) + 1);
 }
 
 fn getMinerCount(): i32 throws GameActionException {
