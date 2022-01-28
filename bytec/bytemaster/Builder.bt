@@ -89,7 +89,7 @@ fn microLoc(include_center: bool, include_others: bool): LocInfo throws GameActi
                         if d <= bot.type.actionRadiusSquared {
                             let rubble = rc.senseRubble(bot.location);
                             loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
-                        } else {
+                        } else if bot.mode.canMove {
                             let towardsLoc = bot.location.add(bot.location.dirTo(loc.loc));
                             if towardsLoc.isWithinDistanceSquared(loc.loc, bot.type.actionRadiusSquared) {
                                 let rubble = rc.senseRubble(bot.location.add(bot.location.dirTo(loc.loc)));

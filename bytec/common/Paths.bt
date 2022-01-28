@@ -77,9 +77,19 @@ fn retarget() {
 
 // Vision radius is 20 u^2
 // That's a 9x9 square, minus the corners, but we initialize the whole thing for easy coordinate calculation
-// (cost in cooldown (assuming movement cooldown = 10) to get here, direction to get here from the origin)
-let cache: [(i32, Direction); 81];
+// (cost in cooldown (assuming movement cooldown = 10) to get here << 3) | direction to get here from the origin
+let cache: [i32; 121];
 let occupied: [bool];
+let ORDERED_DIRECTIONS = [
+    Direction::SOUTHWEST,
+    Direction::WEST,
+    Direction::NORTHWEST,
+    Direction::SOUTH,
+    Direction::NORTH,
+    Direction::SOUTHEAST,
+    Direction::EAST,
+    Direction::NORTHEAST,
+];
 
 // Initialize the arrays
 fn pathStart() throws GameActionException {
@@ -87,61 +97,53 @@ fn pathStart() throws GameActionException {
 
     // Reset the scores and best directions for each location
     for i in unroll 0..cache.len() {
-        cache[i] = (100000, null);
+        cache[i] = 100000 << 3;//, null);
     }
 
     // Store the positions of nearby robots in a lookup table so we can avoid them
-    occupied = [; 81];
-    for r in Mem::nearbyAllies {
+    occupied = [; 121];
+    for r in rc.senseNearbyRobots() {
         let x = r.location.x - at.x;
         let y = r.location.y - at.y;
-        if x*x + y*y <= 20 {
-            let i = (4 + x) * 9 + 4 + y;
+        if x*x + y*y <= 34 {
+            let i = (5 + x) * 11 + 5 + y;
             occupied[i] = true;
         }
     }
-    for r in Mem::nearbyEnemies {
-        let x = r.location.x - at.x;
-        let y = r.location.y - at.y;
-        if x*x + y*y <= 20 {
-            let i = (4 + x) * 9 + 4 + y;
-            occupied[i] = true;
-        }
-    }
+    // for r in Mem::nearbyEnemies {
+    //     let x = r.location.x - at.x;
+    //     let y = r.location.y - at.y;
+    //     if x*x + y*y <= 20 {
+    //         let i = (5 + x) * 11 + 5 + y;
+    //         occupied[i] = true;
+    //     }
+    // }
     // Also block the last couple locations we've been at to avoid oscillation
     for l in lastLocs {
         if l != null {
             let x = l.x - at.x;
             let y = l.y - at.y;
-            if x*x + y*y <= 20 {
-                let i = (4 + x) * 9 + 4 + y;
+            if x*x + y*y <= 34 {
+                let i = (5 + x) * 11 + 5 + y;
                 occupied[i] = true;
             }
         }
     }
 
     // Initialize locations adjacent to the starting point
-    let directions = [
-        Direction::SOUTHWEST,
-        Direction::WEST,
-        Direction::NORTHWEST,
-        Direction::SOUTH,
-        Direction::CENTER,
-        Direction::NORTH,
-        Direction::SOUTHEAST,
-        Direction::EAST,
-        Direction::NORTHEAST,
-    ];
+    let q = [0, 1, 2, 3, 0, 4, 5, 6, 7];
     for x in unroll -1..2 {
         for y in unroll -1..2 {
             if x*x + y*y != 0 {
                 let didx = (x+1)*3 + y + 1;
-                let dir = directions[didx];
-                let i = (4 + x) * 9 + 4 + y;
+                let didx = q[didx];
+                let dir = ORDERED_DIRECTIONS[didx];
+                let i = (5 + x) * 11 + 5 + y;
                 if rc.canMove(dir) && !occupied[i] {
                     let loc = at.translate(x, y);
                     let baseRubble = rc.senseRubble(loc) + 10;
-                    cache[i] = (baseRubble, dir);
+                    cache[i] = (baseRubble << 3) | didx;
+                    // cache[i] = (baseRubble, dir);
                 }
             }
         }
@@ -150,11 +152,13 @@ fn pathStart() throws GameActionException {
 
 let at: MapLocation;
 
+let rubble: [i32; 121];
 fn inline doLoc(x: i32, y: i32) throws GameActionException {
     let loc = at.translate(x, y);
-    let baseIdx = (4 + x) * 9 + 4 + y;
+    let baseIdx = (5 + x) * 11 + 5 + y;
     if rc.onTheMap(loc) && !occupied[baseIdx] {
-        let baseRubble = rc.senseRubble(loc) + 10;
+        let baseRubble = (rc.senseRubble(loc) + 10) << 3;
+        // rubble[baseIdx] = baseRubble;
         let maxD = if x*x > y*y { x*x } else { y*y };
 
         for dx in unroll -1..2 {
@@ -163,11 +167,12 @@ fn inline doLoc(x: i32, y: i32) throws GameActionException {
                 let y2 = y + dy;
                 // Only consider locations that are in previous layers (their max coordinate is less than this one)
                 // this whole condition is evaluated at compile time of course
-                if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
-                    let i = (4 + x2) * 9 + 4 + y2;
-                    if cache[i].0 + baseRubble < cache[baseIdx].0 {
-                        cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
-                    }
+                if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 <= maxD && y2*y2 <= maxD) {
+                    let i = (5 + x2) * 11 + 5 + y2;
+                    cache[baseIdx] = min(cache[baseIdx], cache[i] + baseRubble)
+                    // if cache[i].0 + baseRubble < cache[baseIdx].0 {
+                    //     cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
+                    // }
                 }
             }
         }
@@ -179,17 +184,33 @@ fn inline doLoc(x: i32, y: i32) throws GameActionException {
 // (this performs one iteration of Bellman-Ford, but in such an order than one iteration is pretty good)
 fn pathIter() throws GameActionException  {
     // Visit each location in order of distance from the origin (mostly)
-    let sides = [1, 3, 5, 7, 5];
-    let offsets = [0, 0, 0, 0, 2];
-    for layer in unroll 0..sides.len() {
-        for i in unroll 0..sides[layer] {
-            let o = offsets[layer];
-            if i != 0 && i+1 != sides[layer] {
-                doLoc(-layer, -layer + o + i);
-                doLoc(layer, -layer + o + i);
+    if rc.getType().visionRadiusSquared == 34 {
+        let sides = [1, 3, 5, 7, 9, 7];
+        let offsets = [0, 0, 0, 0, 0, 2];
+        for layer in unroll 0..sides.len() {
+            for i in unroll 0..sides[layer] {
+                let o = offsets[layer];
+                if layer == sides.len() - 1 || (i != 0 && i+1 != sides[layer]) {
+                    doLoc(-layer, -layer + o + i);
+                    doLoc(layer, -layer + o + i);
+                }
+                doLoc(-layer + o + i, layer);
+                doLoc(-layer + o + i, -layer);
             }
-            doLoc(-layer + o + i, layer);
-            doLoc(-layer + o + i, -layer);
+        }
+    } else {
+        let sides = [1, 3, 5, 7, 5];
+        let offsets = [0, 0, 0, 0, 2];
+        for layer in unroll 0..sides.len() {
+            for i in unroll 0..sides[layer] {
+                let o = offsets[layer];
+                if i != 0 && i+1 != sides[layer] {
+                    doLoc(-layer, -layer + o + i);
+                    doLoc(layer, -layer + o + i);
+                }
+                doLoc(-layer + o + i, layer);
+                doLoc(-layer + o + i, -layer);
+            }
         }
     }
 }
@@ -200,9 +221,9 @@ let bestArchonRubble: i32;
 let bestArchonScore: i32;
 fn inline doLocA(x: i32, y: i32) throws GameActionException {
     let loc = at.translate(x, y);
-    let baseIdx = (4 + x) * 9 + 4 + y;
+    let baseIdx = (5 + x) * 11 + 5 + y;
     if rc.onTheMap(loc) && !occupied[baseIdx] {
-        let baseRubble = rc.senseRubble(loc) + 10;
+        let baseRubble = (rc.senseRubble(loc) + 10) << 3;
         let maxD = if x*x > y*y { x*x } else { y*y };
 
         for dx in unroll -1..2 {
@@ -211,19 +232,20 @@ fn inline doLocA(x: i32, y: i32) throws GameActionException {
                 let y2 = y + dy;
                 // Only consider locations that are in previous layers (their max coordinate is less than this one)
                 // this whole condition is evaluated at compile time of course
-                if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
-                    let i = (4 + x2) * 9 + 4 + y2;
-                    if cache[i].0 + baseRubble < cache[baseIdx].0 {
-                        rc.setIndicatorLine(at.translate(x2, y2), loc, 0, 0, 127);
-                        cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
-                    }
+                if x2*x2+y2*y2 <= 34 && (dx != 0 || dy != 0) && (x2*x2 < maxD && y2*y2 < maxD) {
+                    let i = (5 + x2) * 11 + 5 + y2;
+                    cache[baseIdx] = min(cache[baseIdx], cache[i] + baseRubble);
+                    // if cache[i].0 + baseRubble < cache[baseIdx].0 {
+                    //     rc.setIndicatorLine(at.translate(x2, y2), loc, 0, 0, 127);
+                    //     cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
+                    // }
                 }
             }
         }
-        if cache[baseIdx].0 < 100000 && (baseRubble < bestArchonRubble || (baseRubble == bestArchonRubble && cache[baseIdx].0 < bestArchonScore)) {
+        if cache[baseIdx] < (100000 << 3) && (baseRubble < bestArchonRubble || (baseRubble == bestArchonRubble && cache[baseIdx] < bestArchonScore)) {
             rc.setIndicatorDot(loc, 255, 0, 0);
-            bestArchonDir = cache[baseIdx].1;
-            bestArchonScore = cache[baseIdx].0;
+            bestArchonDir = ORDERED_DIRECTIONS[inline cache[baseIdx] & 0b111];
+            bestArchonScore = cache[baseIdx];
             bestArchonRubble = baseRubble;
         }
     }
@@ -254,7 +276,6 @@ fn archonMove(): bool throws GameActionException {
         bestArchonScore = 0;
         bestArchonRubble = rc.senseRubble(rc.getLocation()) + 10;
         pathIterArchon();
-        println("Attempting archon move, got direction " + bestArchonDir + " with rubble " + bestArchonRubble);
         if bestArchonDir == Direction::CENTER {
             true
         } else {
@@ -266,14 +287,34 @@ fn archonMove(): bool throws GameActionException {
     }
 }
 
+let bestScore = 100000;
+let bestDir: Direction = null;
+let bestPos: MapLocation = null;
+let tx = 0;
+let ty = 0;
+fn inline fLoc(x: i32, y: i32) {
+    let i = (5 + x) * 11 + 5 + y;
+    let dx = x - tx;
+    let dy = x - tx;
+    let d2 = dx*dx + dy*dy;
+    let score = (cache[i] >> 3) + 40 * (abs(x - tx) + abs(y - ty));
+    if score < bestScore {
+        bestScore = score;
+        bestDir = ORDERED_DIRECTIONS[inline cache[i] & 0b111];
+        bestPos = at.translate(x, y);
+    }
+}
+
 fn pathFinish(from: MapLocation, to: MapLocation): Direction {
-    let tx = to.x - from.x;
-    let ty = to.y - from.y;
-    if tx*tx + ty*ty <= 20 {
+    at = from;
+    tx = to.x - from.x;
+    ty = to.y - from.y;
+    let r2 = if rc.getType().visionRadiusSquared == 34 { 34 } else { 20 };
+    if tx*tx + ty*ty <= r2 {
         // Go directly to target
-        let d = cache[inline (4 + tx) * 9 + 4 + ty].1;
-        if d != null {
-            return d;
+        let s = cache[inline (5 + tx) * 11 + 5 + ty];
+        if s != 100000 << 3 {
+            return ORDERED_DIRECTIONS[inline s & 0b111];
         }
     }
 
@@ -282,29 +323,24 @@ fn pathFinish(from: MapLocation, to: MapLocation): Direction {
     // e.g. if we have an obstacle right in the way we want to go around, but that way we would run into it
     // so we use score + max coordinate distance to target
     // These are the positions on the outside of the vision radius to search
-    let positions = [
-        (-2, 4), (-1, 4), (0, 4), (1, 4), (2, 4),
-        (-2, -4), (-1, -4), (0, -4), (1, -4), (2, -4),
-        (-3, 3), (3, 3), (-3, -3), (3, -3),
-        (-4, -2), (-4, -1), (-4, 0), (-4, 1), (-4, 2),
-        (4, -2), (4, -1), (4, 0), (4, 1), (4, 2),
-    ];
-    let dStart = tx*tx + ty*ty;
-    let bestScore = 100000;
-    let bestDir: Direction = null;
-    let bestPos: MapLocation = null;
-    for pos in positions {
-        let x = pos.0;
-        let y = pos.1;
-        let i = (4 + x) * 9 + 4 + y;
-        let dx = x - tx;
-        let dy = x - tx;
-        let d2 = dx*dx + dy*dy;
-        let score = cache[i].0 + 50 * max(abs(x - tx), abs(y - ty));
-        if score < bestScore {
-            bestScore = score;
-            bestDir = cache[i].1;
-            bestPos = from.translate(x, y);
+    bestScore = 100000;
+    bestDir = null;
+    bestPos = null;
+    if rc.getType().visionRadiusSquared == 34 {
+        for i in unroll 0..7 {
+            fLoc(-5, -5 + 2 + i);
+            fLoc(5, -5 + 2 + i);
+            fLoc(-5 + 2 + i, 5);
+            fLoc(-5 + 2 + i, -5);
+        }
+    } else {
+        for i in unroll 0..5 {
+            if i != 0 && i != 4 {
+                fLoc(-4, -4 + 2 + i);
+                fLoc(4, -4 + 2 + i);
+            }
+            fLoc(-4 + 2 + i, 4);
+            fLoc(-4 + 2 + i, -4);
         }
     }
     if bestPos != null {

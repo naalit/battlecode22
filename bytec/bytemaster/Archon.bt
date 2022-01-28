@@ -98,7 +98,7 @@ enum BuildEntry {
 
     fn matches(i: i32): bool {
         match self {
-            StartMiner  => i == 70 || i == 40,
+            StartMiner  => i == 70 || i == 49,
             LateMiner   => i == 50 || i == 20,
             Laboratory  => i == 60 || i == 30,
             Builder     => i == 80 || i == 25,
@@ -121,7 +121,7 @@ enum BuildEntry {
     }
 
     fn queue() throws GameActionException {
-        rc.setIndicatorString("Queued: " + self);
+        // rc.setIndicatorString("Queued: " + self);
         lastQueued = self.priority();
         rc.writeSharedArray(Mem::BUILD_QUEUE_LOC, self.priority());
         rc.writeSharedArray(Mem::BUILD_QUEUE_LOC + 1, self.leadNeeded());
@@ -131,15 +131,18 @@ enum BuildEntry {
         let canBuildThis = self.leadNeeded() <= rc.getTeamLeadAmount(rc.getTeam());
         let existing = rc.readSharedArray(Mem::BUILD_QUEUE_LOC);
         if existing == 0 {
+            rc.setIndicatorString("Was 0: " + self);
             if !canBuildThis { self.queue(); }
             canBuildThis
-        } else if self.matches(existing) && existing == lastQueued && canBuildThis {
-            rc.writeSharedArray(Mem::BUILD_QUEUE_LOC, 0);
-            true
+        // } else if self.matches(existing) && existing == lastQueued && canBuildThis {
+        //     rc.writeSharedArray(Mem::BUILD_QUEUE_LOC, 0);
+        //     true
         } else if self.priority() > existing {
+            rc.setIndicatorString("Higher priority: " + self + " with " + self.priority() + " > " + existing);
             if !canBuildThis { self.queue(); }
             canBuildThis
-        } else if self.leadNeeded() <= rc.getTeamLeadAmount(rc.getTeam()) - rc.readSharedArray(Mem::BUILD_QUEUE_LOC+1) {//existing.leadNeeded() {
+        } else if self.leadNeeded() <= rc.getTeamLeadAmount(rc.getTeam()) - rc.readSharedArray(Mem::BUILD_QUEUE_LOC+1) {
+            rc.setIndicatorString("Enough lead for " + self + ": " + rc.getTeamLeadAmount(rc.getTeam()) + " >= " + self.leadNeeded() + " + " + rc.readSharedArray(Mem::BUILD_QUEUE_LOC+1));
             true
         } else {
             false
@@ -158,6 +161,131 @@ enum BuildEntry {
 }
 let lastQueued = 0;
 
+class LocInfo {
+    let loc: MapLocation;
+    let enemyDamage: i32;
+    let nHealable: i32;
+    let rubble: i32;
+
+    fn init(loc: MapLocation) throws GameActionException {
+        self.loc = loc;
+        self.rubble = rc.senseRubble(loc);
+        self.enemyDamage = 0;
+        self.nHealable = 0;
+    }
+}
+fn locBetter(old: LocInfo, new: LocInfo): bool {
+    if old == null { return true; }
+    if new.enemyDamage < old.enemyDamage { return true; }
+    if new.enemyDamage > old.enemyDamage { return false; }
+    if new.rubble <= old.rubble + 10 {
+        if new.nHealable > new.nHealable { return true; }
+        if new.nHealable < new.nHealable { return false; }
+    }
+    new.rubble < old.rubble
+}
+
+let cloc: LocInfo = null;
+fn microLoc(): LocInfo throws GameActionException {
+    let at = rc.getLocation();
+    let n: LocInfo = null;
+    let locs: [LocInfo; 9] = [n,n,n,n,n,n,n,n,n];
+    cloc = null;
+    let directions = allDirections();
+    for i in unroll 0..9 {
+        let dir = directions[i];
+        let l = at.add(dir);
+        if dir == Direction::CENTER || (!rc.canSenseRobotAtLocation(l) && rc.onTheMap(l)) {
+            locs[i] = LocInfo();
+            locs[i].init(l);
+            if dir == Direction::CENTER {
+                cloc = locs[i];
+            }
+        }
+    }
+    for i in unroll ENEMY_SOLDIER_LOC..ENEMY_SOLDIER_LOC+ENEMY_SOLDIER_LEN {
+        let r = rc.readSharedArray(i);
+        if r != 0 {
+            let loc = Mem::decodeLoc(r - 1);
+            if !loc.isWithinDistanceSquared(at, 20) {
+                for l in locs {
+                    // Assume enemy soldiers we can't see could have moved 1 tile by now
+                    if l != null && loc.isWithinDistanceSquared(l.loc, 25) {
+                        l.enemyDamage += 10;
+                    }
+                }
+            }
+        }
+    }
+    for bot in Mem::nearbyEnemies {
+        if bot.mode.canAct && bot.type.damage > 0 {
+            for loc in locs {
+                if loc != null {
+                    // Assume they could move to attack us next turn, but give it a 2/3 chance
+                    let d = bot.location.distanceSquaredTo(loc.loc);
+                    // Assume they could move to attack us next turn, but give it a 2/3 chance
+                    if d <= bot.type.actionRadiusSquared {
+                        let rubble = rc.senseRubble(bot.location);
+                        loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
+                    } else if bot.mode.canMove {
+                        let towardsLoc = bot.location.add(bot.location.dirTo(loc.loc));
+                        if towardsLoc.isWithinDistanceSquared(loc.loc, bot.type.actionRadiusSquared) {
+                            let rubble = rc.senseRubble(bot.location.add(bot.location.dirTo(loc.loc)));
+                            loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble) * 2 / 3;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let actionRadius = rc.getType().actionRadiusSquared;
+    for bot in Mem::nearbyAllies {
+        if bot.mode == RobotMode::DROID && bot.health < bot.type.health {
+            for loc in locs {
+                if loc != null {
+                    if bot.location.isWithinDistanceSquared(loc.loc, actionRadius) {
+                        loc.nHealable += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    let best = cloc;
+    for loc in locs {
+        if loc != null {
+            if locBetter(best, loc) {
+                best = loc;
+            }
+        }
+    }
+    best
+}
+
+fn microMove(): bool throws GameActionException {
+    let best = microLoc();
+    let at = rc.getLocation();
+
+    // if best != null {
+        if best.loc != at {
+            rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", healing: " + best.nHealable);
+            rc.setIndicatorLine(at, best.loc, 0, 0, 255);
+            if rc.isMovementReady() {
+                rc.move(at.dirTo(best.loc));
+            }
+            true
+        } else {
+            rc.setIndicatorString("MICRO STAY: damage: " + best.enemyDamage + ", healing: " + best.nHealable);
+            false
+        }
+    // } else {
+    //     rc.setIndicatorString("NO MICRO: damage: " + best.enemyDamage + ", healing: " + best.n);
+    //     false
+    // }
+}
+
+define MAX_MOBILE_TURNS = 40;
+let mobileTurns = 0;
 let incomes: [i32] = [; 10];
 let incomeIdx = 0;
 fn averageIncome(): i32 throws GameActionException {
@@ -177,6 +305,18 @@ let canMove = true;
 let minersSpawned = 0;
 let nearbyMiner = false;
 let nLead = 0;
+let nextVortex = 0;
+fn findVortex() throws GameActionException {
+    nextVortex = 0;
+    let schedule = rc.getAnomalySchedule();
+    for i in schedule {
+        if i.anomalyType == AnomalyType::VORTEX && i.roundNumber > rc.getRoundNum() {
+            nextVortex = i.roundNumber;
+            break;
+        }
+    }
+}
+let wasTargetingArchon = false;
 fn turn() throws GameActionException {
     if archonCount != rc.getArchonCount() {
         archonCount = rc.getArchonCount();
@@ -188,6 +328,7 @@ fn turn() throws GameActionException {
         }
         rc.writeSharedArray(Mem::FRIENDLY_ARCHON_LOC + archonOrder, Mem::encodeLoc(rc.getLocation()));
         rc.writeSharedArray(Mem::BUILD_QUEUE_LOC, 0);
+        findVortex();
     }
 
     if archonOrder == 0 {
@@ -213,12 +354,41 @@ fn turn() throws GameActionException {
 
     if rc.getMode() == RobotMode::PORTABLE {
         // Move to low rubble
-        if Paths::archonMove() {
+        mobileTurns += 1;
+        if (Mem::nearbyEnemies.len() > 0 || mobileTurns >= MAX_MOBILE_TURNS) && !microMove() && rc.canTransform() && rc.senseRubble(rc.getLocation()) <= 10 {
             rc.transform();
             rc.writeSharedArray(Mem::FRIENDLY_ARCHON_LOC + archonOrder, Mem::encodeLoc(rc.getLocation()));
             canMove = true;
+            findVortex();
+        } else {
+            let loc = rc.getLocation();
+            let closestSoldier = Mem::getClosestSoldier(loc);
+            if closestSoldier != null { //&& !rc.canSenseLocation(closestSoldier) {
+                Paths::target = closestSoldier;
+                Paths::targetMove(true);
+            } else if Mem::enemyArchons.len() > 0 {
+                let closest: MapLocation = null;
+                let closest_d = 100000;
+                for i in Mem::enemyArchons {
+                    let d = i.distanceSquaredTo(rc.getLocation());
+                    if d < closest_d {
+                        closest = i;
+                        closest_d = d;
+                    }
+                }
+                if closest != null {
+                    Paths::target = closest;
+                    Paths::targetMove(false);
+                    wasTargetingArchon = true;
+                }
+            } else if wasTargetingArchon {
+                wasTargetingArchon = false;
+                Paths::target = null;
+            }
+            Paths::targetMove(true);
         }
     } else {
+        mobileTurns = 0;
         if canMove && rc.canTransform() && minersSpawned >= 2 && (Mem::getBuilderCount() > 0 || Mem::getLabCount() > 0) && rc.senseRubble(rc.getLocation()) > 0 {
             let rubble = rc.senseRubble(rc.getLocation());
             let found = false;
@@ -237,6 +407,10 @@ fn turn() throws GameActionException {
                 canMove = false;
             }
         }
+        if rc.canTransform() && rc.getRoundNum() < nextVortex && rc.getRoundNum() > nextVortex - 3 {
+            println("Preparing for vortex");
+            rc.transform();
+        }
 
         // Normal archon things
         rc.setIndicatorString("Build queue: priority " + rc.readSharedArray(Mem::BUILD_QUEUE_LOC) + "for lead " + rc.readSharedArray(Mem::BUILD_QUEUE_LOC + 1));
@@ -251,9 +425,10 @@ fn turn() throws GameActionException {
         let needsBuilder = false;
         builderTurns += 1;
         if //income >= 3
-            (Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab || builderTurns >= 30)
-            && minerCount > 3
-            && Mem::nearbyEnemies.len() == 0
+            (Mem::buildInfo.shouldBuildLab && minerCount > 1) || 
+                ((Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab || builderTurns >= 30 || Mem::getLabCount() == 0)
+                && minerCount > 3
+                && Mem::nearbyEnemies.len() == 0)
         {
             if Mem::getLabCount() == 0 || (income >= 3 * Mem::getLabCount()) && BuildEntry::Laboratory.tryQueue() {
                 if rc.readSharedArray(Mem::LAB_CLAIM_LOC) == 0 && builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead && Mem::getBuilderCount() < rc.getArchonCount() * 3 {
@@ -319,6 +494,10 @@ fn turn() throws GameActionException {
             if bestUnit != null {
                 rc.repair(bestUnit.location);
             }
+        }
+
+        if rc.canTransform() && (Mem::getLabCount() > 0 && minersSpawned >= 2 && Mem::nearbyEnemies.len() == 0) || (minersSpawned > 0 && Mem::nearbyEnemies.len() > 2 * Mem::nearbyAllies.len()) {
+            rc.transform();
         }
     }
 

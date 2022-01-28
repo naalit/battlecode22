@@ -48,7 +48,7 @@ fn turn() throws GameActionException {
             } else if currentCorner != -1 {
                 Paths::target = Mem::cornerLocs[currentCorner];
                 Paths::targetMove(true);
-            } else if rc.getID() % 3 == 0 {
+            } else if rc.getID() % 3 == 0 || rc.getRoundNum() < 100 {
                 currentCorner = Mem::minerClaimCorner();
                 if currentCorner != -1 {
                     Paths::target = Mem::cornerLocs[currentCorner];
@@ -56,7 +56,7 @@ fn turn() throws GameActionException {
                 } else {
                     Paths::targetMove(true);
                 }
-            } else if rc.getID() % 3 == 1 && Mem::closestArchon != null && !rc.canSenseLocation(Mem::closestArchon) && rc.getRoundNum() > 100 {
+            } else if rc.getID() % 3 == 1 && rc.getRoundNum() > 100 && Mem::closestArchon != null && !rc.canSenseLocation(Mem::closestArchon) && rc.getRoundNum() > 100 {
                 Paths::target = Mem::closestArchon;
                 Paths::targetMove(true);
             } else {
@@ -149,7 +149,7 @@ fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameAction
                     if d <= bot.type.actionRadiusSquared {
                         let rubble = rc.senseRubble(bot.location);
                         loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
-                    } else {
+                    } else if bot.mode.canMove {
                         let towardsLoc = bot.location.add(bot.location.dirTo(loc.loc));
                         if towardsLoc.isWithinDistanceSquared(loc.loc, bot.type.actionRadiusSquared) {
                             let rubble = rc.senseRubble(bot.location.add(bot.location.dirTo(loc.loc)));

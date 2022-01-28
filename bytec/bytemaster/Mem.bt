@@ -364,13 +364,13 @@ fn minerPingCorner(i: i32): bool throws GameActionException {
     }
     let idx = MINER_CORNER_LOC + i / 2;
     let a = rc.readSharedArray(idx);
-    // if a & (1 << (8 * (i % 2))) != 0 {
-    //     false
-    // } else {
+    if a & (1 << (8 * (i % 2))) != 0 {
+        false
+    } else {
         a |= (0b10 << 8 * (i % 2));
         rc.writeSharedArray(idx, a);
         true
-    // }
+    }
 }
 fn minerClaimCorner(): i32 throws GameActionException {
     fn inline tryCorner(i: i32): bool {
@@ -384,7 +384,7 @@ fn minerClaimCorner(): i32 throws GameActionException {
             } else {
                 a >> 8
             };
-            if b & 0b10 == 0 {
+            if b  == 0 {
                 let loc = cornerLocs[i];
                 let at = rc.getLocation();
                 // if abs(loc.x - at.x) <= rc.getMapWidth() / 2 && abs(loc.y - at.y) <= rc.getMapHeight() / 2 {
@@ -416,17 +416,17 @@ fn minerPassiveCornerSearch() throws GameActionException {
         cornerLocs.push(MapLocation(rc.getMapWidth() - 1, 0));
         cornerLocs.push(MapLocation(rc.getMapWidth() - 1, rc.getMapHeight() - 1));
     }
-    // for i in unroll 0..4 {
-    //     if rc.canSenseLocation(cornerLocs[i]) {
-    //         let idx = MINER_CORNER_LOC + i / 2;
-    //         let a = rc.readSharedArray(idx);
-    //         let bit = (1 << 8 * (i % 2));
-    //         if a & bit == 0 {
-    //             a |= bit;
-    //             rc.writeSharedArray(idx, a);
-    //         }
-    //     }
-    // }
+    for i in unroll 0..4 {
+        if rc.canSenseLocation(cornerLocs[i]) {
+            let idx = MINER_CORNER_LOC + i / 2;
+            let a = rc.readSharedArray(idx);
+            let bit = (1 << 8 * (i % 2));
+            if a & bit == 0 {
+                a |= bit;
+                rc.writeSharedArray(idx, a);
+            }
+        }
+    }
 }
 
 fn getMinerCount(): i32 throws GameActionException {
