@@ -355,7 +355,7 @@ fn turn() throws GameActionException {
     if rc.getMode() == RobotMode::PORTABLE {
         // Move to low rubble
         mobileTurns += 1;
-        if (Mem::nearbyEnemies.len() > 0 || mobileTurns >= MAX_MOBILE_TURNS) && !microMove() && rc.canTransform() && rc.senseRubble(rc.getLocation()) <= 10 {
+        if (Mem::nearbyEnemies.len() > 0 || mobileTurns >= MAX_MOBILE_TURNS) && (mobileTurns > 80 || !microMove()) && rc.canTransform() && rc.senseRubble(rc.getLocation()) <= 10 {
             rc.transform();
             rc.writeSharedArray(Mem::FRIENDLY_ARCHON_LOC + archonOrder, Mem::encodeLoc(rc.getLocation()));
             canMove = true;

@@ -276,6 +276,7 @@ fn archonMove(): bool throws GameActionException {
         bestArchonScore = 0;
         bestArchonRubble = rc.senseRubble(rc.getLocation()) + 10;
         pathIterArchon();
+        rc.setIndicatorString("ARCHON MOVE: " + bestArchonDir + " with rubble " + (bestArchonRubble - 10));
         if bestArchonDir == Direction::CENTER {
             true
         } else {

@@ -25,7 +25,23 @@ fn averageIncome(): i32 throws GameActionException {
 
 fn turn() throws GameActionException {
     if rc.getMode() == RobotMode::PORTABLE {
-        if Mem::nearbyAllies.len() < 10 {
+        let loc = rc.getLocation();
+        let closestSoldier: RobotInfo = null;
+        let closestD = 100000;
+        for i in Mem::nearbyEnemies {
+            if i.type.damage > 0 && i.mode.canAct {
+                let d = i.location.distanceSquaredTo(loc);
+                if d < closestD {
+                    closestD = d;
+                    closestSoldier = i;
+                }
+            }
+        }
+
+        if closestSoldier != null {
+            Paths::target = loc.translate(loc.x-closestSoldier.location.x, loc.y-closestSoldier.location.y);
+            Paths::targetMove(false);
+        } else if Mem::nearbyAllies.len() < 10 {
             if Paths::archonMove() && rc.canTransform() {
                 rc.transform();
             }
