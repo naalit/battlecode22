@@ -56,7 +56,7 @@ fn turn() throws GameActionException {
 
     // backup for pillars-like maps where the terrain switches
     // we'll probably still lose since we don't anticipate it, but if the other team doesn't either it might be helpful
-    if (rc.senseRubble(rc.getLocation()) > 10 || Mem::nearbyAllies.len() >= 10) && (Mem::getLabCount() > 1 || rc.senseRubble(rc.getLocation()) >= 40) && rc.canTransform() {
+    if (rc.senseRubble(rc.getLocation()) > 10 || rc.getTransmutationRate() >= 7) && (Mem::getLabCount() > 1 || rc.senseRubble(rc.getLocation()) >= 40) && rc.canTransform() {
         rc.transform();
     }
 

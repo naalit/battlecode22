@@ -42,7 +42,6 @@ let cloc: LocInfo = null;
 let existsDamage = false;
 fn microLoc(include_center: bool, include_others: bool): LocInfo throws GameActionException {
     let at = rc.getLocation();
-    Combat::at = at;
     existsDamage = false;
     let n: LocInfo = null;
     towerUpgrade = null;
@@ -106,7 +105,7 @@ fn microLoc(include_center: bool, include_others: bool): LocInfo throws GameActi
             for l in locs {
                 if l != null {
                     if bot.location.isWithinDistanceSquared(l.loc, RobotType::BUILDER.actionRadiusSquared) {
-                        let v = Combat::repairValue(2, bot);
+                        let v = Micro::repairValue(2, bot);
                         if v > l.repairValue {
                             l.repairTarget = bot;
                             l.repairValue = v;
@@ -247,10 +246,10 @@ fn turn() throws GameActionException {
                     Mem::buildInfo.upgradedLab();
                 }
             } else {
-                let spot = Combat::microLoc(RobotType::WATCHTOWER, 1, true, true, RobotType::WATCHTOWER.health, false, false);
-                if spot != null {
-                    let dir = rc.getLocation().dirTo(spot.loc);
-                    if spot.rubble < 40 && rc.canBuildRobot(RobotType::WATCHTOWER, dir) {
+                let dir = Combat::findSpawnSpace(RobotType::WATCHTOWER);
+                if dir != null {
+                    let spot = rc.getLocation().add(dir);
+                    if rc.senseRubble(spot) < 40 && rc.canBuildRobot(RobotType::WATCHTOWER, dir) {
                         rc.buildRobot(RobotType::WATCHTOWER, dir);
                         Mem::buildInfo.builtWatchtower();
                         Mem::spend(RobotType::WATCHTOWER.buildCostLead);

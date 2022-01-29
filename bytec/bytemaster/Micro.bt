@@ -1,0 +1,426 @@
+extern {
+    import battlecode.common.*;
+}
+
+use Common::*;
+use RobotPlayer::rc;
+
+define KILL_VALUE = 20;
+
+class LocInfo {
+    let loc: MapLocation;
+    let enemyDamage: i32;
+    let rubble: i32;
+    let bestEnemy: RobotInfo;
+    let distToEnemy: i32;
+    let archonDist: i32;
+    let chargeHP: i32;
+    let furyHP: i32;
+    let attackDamage: i32;
+    let bestDamage: i32;
+    let leadDist: i32;
+    let adjacentLead: i32;
+    let repairTarget: RobotInfo;
+    let upgradeTarget: RobotInfo;
+    let repairValue: i32;
+
+    fn init(loc: MapLocation) throws GameActionException {
+        self.loc = loc;
+        self.rubble = rc.senseRubble(loc);
+        self.distToEnemy = 100000;
+        self.leadDist = 10000;
+        if Mem::closestArchon != null {
+            self.archonDist = Mem::closestArchon.distanceSquaredTo(loc);
+        }
+    }
+}
+
+enum Comparison {
+    // Rubble(within)
+    Rubble(i32),
+    AttackPush,
+    EnemyDamage,
+    // Retreat(RETREAT_HEALTH)
+    Retreat(i32),
+    DamageRubble,
+    Attack,
+    PushOrRetreat,
+    AdjacentLead,
+    LeadDist,
+}
+
+class Micro {
+    let comps: [Comparison];
+    let canAttack: bool;
+    let canEnvision: bool;
+    let type: RobotType;
+    let damage: i32;
+    let health: i32;
+    let nearbyEnemyHP: i32;
+    let nearbyFriendlyHP: i32;
+    let nearbyFriendlyDamage: i32;
+    let addSoldiers: bool;
+    let locs: [LocInfo; 9];
+    let cloc: LocInfo = null;
+
+    fn init(comps: [Comparison]): Micro {
+        self.comps = comps;
+        self
+    }
+
+    fn startRc(addSoldiers: bool) throws GameActionException {
+        self.addSoldiers = addSoldiers;
+        self.startGen(rc.getType(), rc.getLevel(), rc.getHealth(), rc.isMovementReady(), true, rc.getType().damage > 0 && rc.isActionReady())
+    }
+
+    fn startSpawn(ty: RobotType) throws GameActionException {
+        self.addSoldiers = false;
+        self.startGen(ty, 1, ty.health, true, false, ty.damage > 0);
+    }
+
+    fn startGen(ty: RobotType, level: i32, health: i32, canMove: bool, canStay: bool, canAttack: bool) throws GameActionException {
+        self.nearbyEnemyHP = 0;
+        self.nearbyFriendlyHP = 0;
+        self.nearbyFriendlyDamage = 0;
+
+        self.canAttack = canAttack;
+        self.canEnvision = canAttack && ty == RobotType::SAGE;
+        self.type = ty;
+        if canAttack {
+            self.damage = ty.getDamage(level);
+        } else {
+            self.damage = 0;
+        }
+        self.health = health;
+
+        let n: LocInfo = null;
+        self.locs = [n,n,n,n,n,n,n,n,n];
+        self.cloc = null;
+
+        let at = rc.getLocation();
+        let directions = allDirections();
+        for i in unroll 0..9 {
+            let dir = directions[i];
+            let l = at.add(dir);
+            if (canStay && dir == Direction::CENTER) || (canMove && !rc.canSenseRobotAtLocation(l) && rc.onTheMap(l)) {
+                self.locs[i] = LocInfo();
+                self.locs[i].init(l);
+                if dir == Direction::CENTER {
+                    self.cloc = self.locs[i];
+                }
+            }
+        }
+    }
+
+    fn inline updateCombatEnemy(loc: LocInfo, bot: RobotInfo, d: i32) {
+        let attackDamage = damageValue(self.damage, bot);
+        if attackDamage > loc.attackDamage {
+            loc.bestEnemy = bot;
+            loc.distToEnemy = d;
+            loc.attackDamage = attackDamage;
+            if attackDamage > loc.bestDamage {
+                loc.bestDamage = attackDamage;
+            }
+        }
+        if self.canEnvision {
+            if bot.mode == RobotMode::TURRET {
+                let hp = bot.type.getMaxHealth(bot.level) / 10;
+                loc.furyHP += damageValue(hp, bot);
+                if loc.furyHP > loc.bestDamage {
+                    loc.bestDamage = loc.furyHP;
+                }
+            } else if bot.mode == RobotMode::DROID {
+                let hp = bot.type.getMaxHealth(bot.level) * 22 / 100;
+                loc.chargeHP += damageValue(hp, bot);
+                if loc.chargeHP > loc.bestDamage {
+                    loc.bestDamage = loc.chargeHP;
+                }
+            }
+        }
+    }
+
+    fn updateDistantEnemies() throws GameActionException {
+        let at = rc.getLocation();
+        for i in unroll ENEMY_SOLDIER_LOC..ENEMY_SOLDIER_LOC+ENEMY_SOLDIER_LEN {
+            let r = rc.readSharedArray(i);
+            if r != 0 {
+                let loc = Mem::decodeLoc(r - 1);
+                if !loc.isWithinDistanceSquared(at, 20) {
+                    for l in self.locs {
+                        // Assume enemy soldiers we can't see could have moved 1 tile by now
+                        if l != null && loc.isWithinDistanceSquared(l.loc, 25) {
+                            l.enemyDamage += 10;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn updateEnemies() throws GameActionException {
+        for bot in Mem::nearbyEnemies {
+            if self.addSoldiers && bot.type.damage > 0 {
+                Mem::addSoldier(bot.location);
+                self.nearbyEnemyHP += bot.health;
+            }
+            if self.canAttack || bot.type.damage > 0 {
+                for loc in self.locs {
+                    if loc != null {
+                        let d = loc.loc.distanceSquaredTo(bot.location);
+                        if bot.mode.canAct && bot.type.damage > 0 {
+                            if d <= bot.type.actionRadiusSquared {
+                                let rubble = rc.senseRubble(bot.location);
+                                loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
+                            // Assume they could move to attack us next turn, but give it a 2/3 chance
+                            } else if bot.mode.canMove {
+                                let towardsLoc = bot.location.add(bot.location.dirTo(loc.loc));
+                                if towardsLoc.isWithinDistanceSquared(loc.loc, bot.type.actionRadiusSquared) {
+                                    let rubble = rc.senseRubble(bot.location.add(bot.location.dirTo(loc.loc)));
+                                    loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble) * 2 / 3;
+                                }
+                            }
+                        }
+                        if self.canAttack && d <= self.type.actionRadiusSquared {
+                            self.updateCombatEnemy(loc, bot, d);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn updateAllies() throws GameActionException {
+        for i in Mem::nearbyAllies {
+            if i.type.damage > 0 {
+                self.nearbyFriendlyHP += i.health;
+                let rubble = rc.senseRubble(i.location);
+                self.nearbyFriendlyDamage += (i.type.getDamage(i.level) * 1000 / i.type.actionCooldown) / (10 + rubble);
+            }
+            // Fury also hits friendly buildings
+            if self.canEnvision && i.mode == RobotMode::TURRET {
+                for loc in self.locs {
+                    if loc != null && i.location.isWithinDistanceSquared(loc.loc, self.type.actionRadiusSquared) {
+                        let hp = i.type.getMaxHealth(i.level) / 10;
+                        loc.furyHP -= damageValue(hp, i);
+                        loc.bestDamage = max(loc.attackDamage, max(loc.furyHP, loc.chargeHP));
+                    }
+                }
+            }
+        }
+    }
+
+    fn updateLead() throws GameActionException {
+        let at = rc.getLocation();
+
+        let start = bytecodeNum();
+        let left = bytecodeLeft();
+
+        let isMiner = false;
+        for i in Mem::nearbyAllies {
+            if i.type == RobotType::MINER {
+                isMiner = true;
+                break;
+            }
+        }
+
+        let check1 = bytecodeNum();
+
+        Miner::closestLead = null;
+        let closestD = 100000;
+        let closestGold = false;
+        Miner::closestM = 0;
+        for loc in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
+            let d0 = at.distanceSquaredTo(loc);
+            let lead = rc.senseLead(loc);
+            if MOST_LEAD && isMiner {
+                if (lead > Miner::closestM || (lead == Miner::closestM && d0 < closestD)) {
+                    Miner::closestM = lead;
+                    Miner::closestLead = loc;
+                    closestD = d0;
+                }
+            } else {
+                if d0 < closestD {
+                    Miner::closestLead = loc;
+                    Miner::closestM = lead;
+                    closestD = d0;
+                }
+            }
+            if d0 <= 8 {
+                for l in self.locs {
+                    if l != null {
+                        if loc.isAdjacentTo(l.loc) {
+                            // The amount of lead that this miner would actually mine in 10 turns, assuming it mines only this tile and so do others
+                            let ourPower = (500 / (10 + l.rubble));
+                            l.adjacentLead = min(ourPower, l.adjacentLead + lead);
+                        }
+                    }
+                }
+            }
+        }
+        // 1 gold is worth 7 lead
+        for loc in rc.senseNearbyLocationsWithGold(rc.getType().visionRadiusSquared) {
+            let d0 = at.distanceSquaredTo(loc);
+            let lead = rc.senseGold(loc);
+            if MOST_LEAD && isMiner {
+                if (lead * 7 > Miner::closestM || (lead * 7 == Miner::closestM && d0 < closestD)) {
+                    Miner::closestM = lead * 7;
+                    Miner::closestLead = loc;
+                    closestD = d0;
+                }
+            } else {
+                if d0 < closestD {
+                    Miner::closestLead = loc;
+                    Miner::closestM = lead * 7;
+                    closestD = d0;
+                }
+            }
+            if d0 <= 8 {
+                for l in self.locs {
+                    if l != null {
+                        if loc.isAdjacentTo(l.loc) {
+                            // The amount of lead that this miner would actually mine in 10 turns, assuming it mines only this tile and so do others
+                            let ourPower = (500 / (10 + l.rubble));
+                            l.adjacentLead = min(ourPower * 7, l.adjacentLead + 7 * lead);
+                        }
+                    }
+                }
+            }
+        }
+        if Miner::closestLead != null {
+            for l in self.locs {
+                if l != null {
+                    l.leadDist = max(abs(l.loc.x - Miner::closestLead.x), abs(l.loc.y - Miner::closestLead.y));
+                }
+            }
+        }
+
+        let check2 = bytecodeNum();
+
+        rc.setIndicatorString("" + left + ": LEAD MICRO: " + (check2 - start) + "; Miner check " + (check1 - start) + ", lead search " + (check2 - check1));
+    }
+
+    fn bestLoc(): LocInfo {
+        let best: LocInfo = self.cloc;
+        for loc in self.locs {
+            if loc != null {
+                if self.better(best, loc) {
+                    best = loc;
+                }
+            }
+        }
+        best
+    }
+
+    fn better(old: LocInfo, new: LocInfo): bool {
+        if old == null { return true; }
+        if new == null { return false; }
+
+        for c in self.comps {
+            match c {
+                Rubble(within) => {
+                    if new.rubble >= old.rubble + within { return false; }
+                    if old.rubble > new.rubble + within { return true; }
+                }
+                AttackPush => if self.canAttack {
+                    if  new.bestEnemy != null && 
+                        (new.enemyDamage == 0 || new.bestEnemy.health * 100 / max(1, self.damage / (10 + new.rubble)) <= self.health * 100 / new.enemyDamage) && 
+                        new.bestDamage > old.bestDamage {
+                        return true;
+                    } else if old.bestEnemy != null && 
+                        (old.enemyDamage == 0 || old.bestEnemy.health * 100 / max(1, self.damage / (10 + old.rubble)) <= self.health * 100 / old.enemyDamage) && 
+                        old.bestDamage > new.bestDamage {
+                        return false;
+                    }
+                }
+                EnemyDamage => {
+                    if new.enemyDamage < old.enemyDamage { return true; }
+                    if new.enemyDamage > old.enemyDamage { return false; }
+                }
+                Retreat(health) => if self.health <= health {
+                    if max(new.archonDist, RobotType::ARCHON.actionRadiusSquared) < old.archonDist { return true; }
+                    if new.archonDist > max(old.archonDist, RobotType::ARCHON.actionRadiusSquared) { return false; }
+                }
+                DamageRubble => if new.enemyDamage > 0 {
+                    if new.rubble < old.rubble { return true; }
+                    if new.rubble > old.rubble { return false; }
+                }
+                Attack => if self.canAttack {
+                    if new.bestDamage > old.bestDamage { return true; }
+                    if new.bestDamage < old.bestDamage { return false; }
+                }
+                PushOrRetreat => if self.nearbyFriendlyHP >= self.nearbyEnemyHP {
+                    if new.distToEnemy < old.distToEnemy { return true; }
+                    if new.distToEnemy > old.distToEnemy { return false; }
+                } else {
+                    if new.distToEnemy > old.distToEnemy { return true; }
+                    if new.distToEnemy < old.distToEnemy { return false; }
+                }
+                AdjacentLead => {
+                    if new.adjacentLead > old.adjacentLead { return true; }
+                    if new.adjacentLead < old.adjacentLead { return false; }
+                }
+                LeadDist => {
+                    if new.leadDist * 10 + new.rubble < old.leadDist * 10 + old.rubble { return true; }
+                    if new.leadDist * 10 + new.rubble > old.leadDist * 10 + old.rubble { return false; }
+                }
+            }
+        }
+
+        false
+    }
+}
+
+fn inline damageValue(dmg: i32, unit: RobotInfo): i32 {
+    // 3 damage to soldier at 50% health: 150
+    // 3 damage to sage at 100% health: 300
+    // 3 damage to lab at 50% health: 6
+    // 3 damage to miner at 100% health: 1
+    let kill = dmg >= unit.health;
+    if kill { dmg = unit.health; }
+    let mkill = if kill { 1 } else { 0 };
+    let healthPercent = unit.health * 100 / unit.type.getMaxHealth(unit.level);
+    let mhealth = (150 - healthPercent) / 10;
+    dmg *= mhealth;
+
+    match unit.type {
+        // Sages are valuable and dangerous, kill on sight
+        SAGE => (dmg + mkill * KILL_VALUE) * 20,
+        // The most immediate threat, if we don't kill them they'll kill us
+        SOLDIER => (dmg + mkill * KILL_VALUE) * 5,
+        // We'll need to kill these to take out a watchtower
+        // probably should have special-case code for actually seeing a watchtower though
+        BUILDER => dmg + mkill * KILL_VALUE,
+        // Another threat
+        WATCHTOWER => dmg + mkill * KILL_VALUE * 20,
+        // Killing an archon would be *incredible*
+        ARCHON => dmg + mkill * 1000,
+        // Killing the enemy lab is also pretty good
+        LABORATORY => dmg / 5 + mkill * KILL_VALUE * 4,
+        MINER => dmg / 10 + mkill * KILL_VALUE,
+    }
+}
+
+fn repairValue(heal: i32, unit: RobotInfo): i32 {
+    if unit.health == unit.type.getMaxHealth(unit.level) {
+        return 0;
+    }
+    let isProto = unit.mode == RobotMode::PROTOTYPE;
+    let protoMul = if isProto { 1 } else { 0 };
+    let mul = match unit.type {
+        // Sages are valuable and dangerous, kill on sight
+        SAGE => 4,
+        // The most immediate threat, if we don't kill them they'll kill us
+        SOLDIER => 3,
+        // We'll need to kill these to take out a watchtower
+        // probably should have special-case code for actually seeing a watchtower though
+        BUILDER => 1,
+        // Another threat
+        WATCHTOWER => if unit.health < 60 && isProto { 1 } else { 4 + 2 * protoMul },
+        // Killing an archon would be *incredible*
+        ARCHON => 5,
+        // Killing the enemy lab is also pretty good
+        LABORATORY => if unit.health < 30 { 4 } else { 1 + 4 * protoMul },
+        MINER => 1,
+    };
+    mul * heal * 100 * (unit.type.getMaxHealth(unit.level) - unit.health) / unit.type.getMaxHealth(unit.level)
+}

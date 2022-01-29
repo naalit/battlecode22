@@ -39,7 +39,10 @@ fn turn() throws GameActionException {
             }
         }
         if sawSoldier {
-            let best = Combat::microLoc(rc.getType(), rc.getLevel(), true, true, rc.getHealth(), true, true);
+            Combat::micro.startRc(true);
+            Combat::micro.updateEnemies();
+            Combat::micro.updateAllies();
+            let best = Combat::micro.bestLoc();
             let dir = rc.getLocation().dirTo(best.loc);
             if dir != Direction::CENTER && rc.canMove(dir) {
                 rc.move(dir);

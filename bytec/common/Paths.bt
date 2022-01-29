@@ -119,16 +119,16 @@ fn pathStart() throws GameActionException {
     //     }
     // }
     // Also block the last couple locations we've been at to avoid oscillation
-    for l in lastLocs {
-        if l != null {
-            let x = l.x - at.x;
-            let y = l.y - at.y;
-            if x*x + y*y <= 34 {
-                let i = (5 + x) * 11 + 5 + y;
-                occupied[i] = true;
-            }
-        }
-    }
+    // for l in lastLocs {
+    //     if l != null {
+    //         let x = l.x - at.x;
+    //         let y = l.y - at.y;
+    //         if x*x + y*y <= 34 {
+    //             let i = (5 + x) * 11 + 5 + y;
+    //             occupied[i] = true;
+    //         }
+    //     }
+    // }
 
     // Initialize locations adjacent to the starting point
     let q = [0, 1, 2, 3, 0, 4, 5, 6, 7];
@@ -153,7 +153,7 @@ fn pathStart() throws GameActionException {
 let at: MapLocation;
 
 let rubble: [i32; 121];
-fn inline doLoc(x: i32, y: i32) throws GameActionException {
+fn inline doLoc(x: i32, y: i32, r2: i32) throws GameActionException {
     let loc = at.translate(x, y);
     let baseIdx = (5 + x) * 11 + 5 + y;
     if rc.onTheMap(loc) && !occupied[baseIdx] {
@@ -167,11 +167,12 @@ fn inline doLoc(x: i32, y: i32) throws GameActionException {
                 let y2 = y + dy;
                 // Only consider locations that are in previous layers (their max coordinate is less than this one)
                 // this whole condition is evaluated at compile time of course
-                if x2*x2+y2*y2 <= 20 && (dx != 0 || dy != 0) && (x2*x2 <= maxD && y2*y2 <= maxD) {
+                if x2*x2+y2*y2 <= r2 && (dx != 0 || dy != 0) && (x2*x2 <= maxD && y2*y2 <= maxD) {
                     let i = (5 + x2) * 11 + 5 + y2;
                     cache[baseIdx] = min(cache[baseIdx], cache[i] + baseRubble)
-                    // if cache[i].0 + baseRubble < cache[baseIdx].0 {
-                    //     cache[baseIdx] = (cache[i].0 + baseRubble, cache[i].1);
+                    // if cache[i] + baseRubble < cache[baseIdx] {
+                    //     cache[baseIdx] = cache[i] + baseRubble;
+                    //     rc.setIndicatorLine(loc, at.translate(x2, y2), 0, 0, 127);
                     // }
                 }
             }
@@ -191,11 +192,11 @@ fn pathIter() throws GameActionException  {
             for i in unroll 0..sides[layer] {
                 let o = offsets[layer];
                 if layer == sides.len() - 1 || (i != 0 && i+1 != sides[layer]) {
-                    doLoc(-layer, -layer + o + i);
-                    doLoc(layer, -layer + o + i);
+                    doLoc(-layer, -layer + o + i, 34);
+                    doLoc(layer, -layer + o + i, 34);
                 }
-                doLoc(-layer + o + i, layer);
-                doLoc(-layer + o + i, -layer);
+                doLoc(-layer + o + i, layer, 34);
+                doLoc(-layer + o + i, -layer, 34);
             }
         }
     } else {
@@ -204,12 +205,12 @@ fn pathIter() throws GameActionException  {
         for layer in unroll 0..sides.len() {
             for i in unroll 0..sides[layer] {
                 let o = offsets[layer];
-                if i != 0 && i+1 != sides[layer] {
-                    doLoc(-layer, -layer + o + i);
-                    doLoc(layer, -layer + o + i);
+                if layer == sides.len() - 1 || (i != 0 && i+1 != sides[layer]) {
+                    doLoc(-layer, -layer + o + i, 20);
+                    doLoc(layer, -layer + o + i, 20);
                 }
-                doLoc(-layer + o + i, layer);
-                doLoc(-layer + o + i, -layer);
+                doLoc(-layer + o + i, layer, 20);
+                doLoc(-layer + o + i, -layer, 20);
             }
         }
     }
@@ -295,10 +296,7 @@ let tx = 0;
 let ty = 0;
 fn inline fLoc(x: i32, y: i32) {
     let i = (5 + x) * 11 + 5 + y;
-    let dx = x - tx;
-    let dy = x - tx;
-    let d2 = dx*dx + dy*dy;
-    let score = (cache[i] >> 3) + 40 * (abs(x - tx) + abs(y - ty));
+    let score = (cache[i] >> 3) + 50 * (abs(x - tx) + abs(y - ty));
     if score < bestScore {
         bestScore = score;
         bestDir = ORDERED_DIRECTIONS[inline cache[i] & 0b111];
@@ -334,15 +332,21 @@ fn pathFinish(from: MapLocation, to: MapLocation): Direction {
             fLoc(-5 + 2 + i, 5);
             fLoc(-5 + 2 + i, -5);
         }
+        fLoc(4, 4);
+        fLoc(4, -4);
+        fLoc(-4, 4);
+        fLoc(-4, -4);
     } else {
         for i in unroll 0..5 {
-            if i != 0 && i != 4 {
-                fLoc(-4, -4 + 2 + i);
-                fLoc(4, -4 + 2 + i);
-            }
+            fLoc(-4, -4 + 2 + i);
+            fLoc(4, -4 + 2 + i);
             fLoc(-4 + 2 + i, 4);
             fLoc(-4 + 2 + i, -4);
         }
+        fLoc(3, 3);
+        fLoc(3, -3);
+        fLoc(-3, 3);
+        fLoc(-3, -3);
     }
     if bestPos != null {
         rc.setIndicatorLine(from, bestPos, 255, 0, 0);
@@ -366,7 +370,18 @@ fn inline clearLocs() {
     }
     lastLocIdx = 0;
 }
+fn inline hasLoc(loc: MapLocation): bool {
+    let found = false;
+    for i in lastLocs {
+        if loc == i {
+            found = true;
+            break;
+        }
+    }
+    found
+}
 
+let greedyTurns = 0;
 fn targetMove(exploring: bool): bool throws GameActionException {
     let loc = rc.getLocation();
 
@@ -384,7 +399,7 @@ fn targetMove(exploring: bool): bool throws GameActionException {
 
     rc.setIndicatorLine(loc, target, 0, 255, 0);
 
-    let dir = if bytecodeLeft() >= 4800 {
+    let dir = if greedyTurns <= 0 && (bytecodeLeft() > 4500 || (rc.getType().visionRadiusSquared != 34 && bytecodeLeft() >= 3000)) {
         let btc = bytecodeNum();
         let tStart = rc.getRoundNum();
         pathStart();
@@ -396,14 +411,27 @@ fn targetMove(exploring: bool): bool throws GameActionException {
         let dir = pathFinish(loc, target);
         let finishBtc = bytecodeNum();
         if rc.getRoundNum() != tStart { finishBtc += rc.getType().bytecodeLimit; }
-        rc.setIndicatorString("PATHFINDING TOTAL BTC: " + (finishBtc - btc)
+
+        let greedy = false;
+        let oldDir = dir;
+        if dir != null {
+            if hasLoc(loc.add(dir)) {
+                greedyTurns = 5;
+                dir = pathfindGreedy();
+                greedy = true;
+            }
+        }
+
+        rc.setIndicatorString("BFS BTC: " + (finishBtc - btc)
             + ", start: " + (startBtc - btc)
             + ", iter: " + (iterBtc - startBtc)
-            + ", finish: " + (finishBtc - iterBtc));
+            + ", end: " + (finishBtc - iterBtc)
+            + ". g? " + greedy);
 
         dir
     } else {
         rc.setIndicatorString("GREEDY PATHFINDING ENABLED");
+        greedyTurns -= 1;
         pathfindGreedy()
     };
 

@@ -4,11 +4,22 @@ extern {
 
 use Common::*;
 use RobotPlayer::rc;
+use Micro::Comparison;
 
 // Copied from Mem since we want to inline them
 define ENEMY_SOLDIER_LOC = 15;
 define ENEMY_SOLDIER_LEN = 16;
 define MOST_LEAD = true;
+let micro = Micro::Micro().init([
+    Comparison::EnemyDamage,
+    Comparison::AdjacentLead,
+    Comparison::Rubble(20),
+    Comparison::LeadDist,
+    Comparison::Rubble(0),
+]);
+
+let closestLead: MapLocation = null;
+let closestM = 0;
 
 fn preTurn() throws GameActionException {
     // Make sure to mine before we do anything else, in case maintain() and micro goes over on bytecode
@@ -84,196 +95,11 @@ fn turn() throws GameActionException {
     tryMine();
 }
 
-class LocInfo {
-    let loc: MapLocation;
-    let enemyDamage: i32;
-    let rubble: i32;
-    let leadDist: i32;
-    let adjacentLead: i32;
-
-    fn init(loc: MapLocation) throws GameActionException {
-        self.loc = loc;
-        self.rubble = rc.senseRubble(loc);
-        self.enemyDamage = 0;
-        self.leadDist = 10000;
-        self.adjacentLead = 0;
-    }
-}
-fn locBetter(old: LocInfo, new: LocInfo): bool {
-    if old == null { return true; }
-    if new.enemyDamage < old.enemyDamage { return true; }
-    if new.enemyDamage > old.enemyDamage { return false; }
-    if new.adjacentLead > old.adjacentLead { return true; }
-    if new.adjacentLead < old.adjacentLead { return false; }
-    if new.rubble <= old.rubble + 20 {
-        if new.leadDist * 10 + new.rubble < old.leadDist * 10 + old.rubble { return true; }
-        if new.leadDist * 10 + new.rubble > old.leadDist * 10 + old.rubble { return false; }
-    }
-    new.rubble < old.rubble
-}
-
-let closestLead: MapLocation = null;
-let closestM = 0;
-let cloc: LocInfo = null;
-let isMiner = false;
-fn microLoc(include_center: bool, add_soldiers: bool): LocInfo throws GameActionException {
-    let at = rc.getLocation();
-    let n: LocInfo = null;
-    let locs: [LocInfo; 9] = [n,n,n,n,n,n,n,n,n];
-    cloc = null;
-    let directions = allDirections();
-    for i in unroll 0..9 {
-        let dir = directions[i];
-        let l = at.add(dir);
-        if (include_center && dir == Direction::CENTER) || (!rc.canSenseRobotAtLocation(l) && rc.onTheMap(l)) {
-            locs[i] = LocInfo();
-            locs[i].init(l);
-            if dir == Direction::CENTER {
-                cloc = locs[i];
-            }
-        }
-    }
-    for i in unroll ENEMY_SOLDIER_LOC..ENEMY_SOLDIER_LOC+ENEMY_SOLDIER_LEN {
-        let r = rc.readSharedArray(i);
-        if r != 0 {
-            let loc = Mem::decodeLoc(r - 1);
-            if !loc.isWithinDistanceSquared(at, 20) {
-                for l in locs {
-                    // Assume enemy soldiers we can't see could have moved 1 tile by now
-                    if l != null && loc.isWithinDistanceSquared(l.loc, 25) {
-                        l.enemyDamage += 10;
-                    }
-                }
-            }
-        }
-    }
-    for bot in Mem::nearbyEnemies {
-        if bot.mode.canAct && bot.type.damage > 0 {
-            if add_soldiers {
-                Mem::addSoldier(bot.location);
-            }
-            for loc in locs {
-                if loc != null {
-                    // Assume they could move to attack us next turn, but give it a 2/3 chance
-                    let d = bot.location.distanceSquaredTo(loc.loc);
-                    // Assume they could move to attack us next turn, but give it a 2/3 chance
-                    if d <= bot.type.actionRadiusSquared {
-                        let rubble = rc.senseRubble(bot.location);
-                        loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
-                    } else if bot.mode.canMove {
-                        let towardsLoc = bot.location.add(bot.location.dirTo(loc.loc));
-                        if towardsLoc.isWithinDistanceSquared(loc.loc, bot.type.actionRadiusSquared) {
-                            let rubble = rc.senseRubble(bot.location.add(bot.location.dirTo(loc.loc)));
-                            loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble) * 2 / 3;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    // 9x9 in units of lead mined per 10 turns
-    let miningPowers: [i32] = [; 81];
-    for i in Mem::nearbyAllies {
-        if i.type == RobotType::MINER {
-            isMiner = true;
-            let x = i.location.x - at.x;
-            let y = i.location.y - at.y;
-            let rubble = rc.senseRubble(i.location);
-            for dx in unroll -1..2 {
-                for dy in unroll -1..2 {
-                    let x2 = x + dx;
-                    let y2 = y + dy;
-                    if x2*x2 + y2*y2 <= 20 {
-                        miningPowers[(4 + x2) * 9 + 4 + y2] += 500 / (10 + rubble);
-                    }
-                }
-            }
-        }
-    }
-    closestLead = null;
-    let closestD = 100000;
-    let closestGold = false;
-    closestM = 0;
-    for loc in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
-        let d0 = at.distanceSquaredTo(loc);
-        // Make sure existing miners won't mine it out in the next 10 turns
-        let existingPower = 0;
-        let tx = loc.x - at.x;
-        let ty = loc.y - at.y;
-        if tx*tx + ty*ty <= 20 {
-            existingPower = miningPowers[(tx + 4) * 9 + 4 + ty];
-        }
-        let lead = rc.senseLead(loc);
-        if MOST_LEAD && isMiner {
-            if (lead > closestM || (lead == closestM && d0 < closestD)) && existingPower < lead {
-                closestM = lead;
-                closestLead = loc;
-                closestD = d0;
-            }
-        } else {
-            if d0 < closestD && existingPower < lead {
-                closestLead = loc;
-                closestD = d0;
-            }
-        }
-        for l in locs {
-            if l != null {
-                let d = max(abs(l.loc.x - loc.x), abs(l.loc.y - loc.y));
-                if d < l.leadDist {
-                    l.leadDist = d;
-                }
-                if d <= 1 {
-                    // The amount of lead that this miner would actually mine in 10 turns, assuming it mines only this tile and so do others
-                    let ourPower = (500 / (10 + l.rubble));
-                    l.adjacentLead = min(ourPower, l.adjacentLead + lead * ourPower / (ourPower + existingPower));
-                }
-            }
-        }
-    }
-    // 1 gold is worth 7 lead
-    for loc in rc.senseNearbyLocationsWithGold(rc.getType().visionRadiusSquared) {
-        let d0 = at.distanceSquaredTo(loc);
-        // Make sure existing miners won't mine it out in the next 10 turns
-        let existingPower = 0;
-        let tx = loc.x - at.x;
-        let ty = loc.y - at.y;
-        if tx*tx + ty*ty <= 20 {
-            existingPower = miningPowers[(tx + 4) * 9 + 4 + ty];
-        }
-        let lead = rc.senseGold(loc);
-        if (d0 < closestD) && existingPower < lead {
-            closestLead = loc;
-            closestD = d0;
-            closestGold = true;
-        }
-        for l in locs {
-            if l != null {
-                let d = max(abs(l.loc.x - loc.x), abs(l.loc.y - loc.y));
-                if d < l.leadDist {
-                    l.leadDist = d;
-                }
-                if d <= 1 {
-                    // The amount of lead that this miner would actually mine in 10 turns, assuming it mines only this tile and so do others
-                    let ourPower = (500 / (10 + l.rubble));
-                    l.adjacentLead = min(ourPower * 7, l.adjacentLead + 7 * lead * ourPower / (ourPower + existingPower));
-                }
-            }
-        }
-    }
-
-    let best = cloc;
-    for loc in locs {
-        if loc != null {
-            if locBetter(best, loc) {
-                best = loc;
-            }
-        }
-    }
-    best
-}
-
 fn findSpawnSpace(): Direction throws GameActionException {
-    let best = microLoc(false, false);
+    micro.startSpawn(RobotType::MINER);
+    micro.updateEnemies();
+    micro.updateLead();
+    let best = micro.bestLoc();
 
     if best != null {
         rc.getLocation().dirTo(best.loc)
@@ -284,20 +110,23 @@ fn findSpawnSpace(): Direction throws GameActionException {
 }
 
 fn microMove(): bool throws GameActionException {
-    let best = microLoc(true, true);
+    micro.startRc(true);
+    micro.updateEnemies();
+    micro.updateLead();
+    let best = micro.bestLoc();
     let at = rc.getLocation();
 
-    if best != null && (cloc.enemyDamage > 0 || best.adjacentLead > 0) {
+    if best != null && (micro.cloc.enemyDamage > 0 || best.adjacentLead > 0) {
         if best.loc != at {
-            rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
+            // rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
             rc.setIndicatorLine(at, best.loc, 0, 0, 255);
             rc.move(at.dirTo(best.loc));
         } else {
-            rc.setIndicatorString("MICRO STAY: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
+            // rc.setIndicatorString("MICRO STAY: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
         }
         true
     } else {
-        rc.setIndicatorString("NO MICRO: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
+        // rc.setIndicatorString("NO MICRO: damage: " + best.enemyDamage + ", lead: " + best.adjacentLead);
         false
     }
 }
@@ -326,7 +155,7 @@ fn shouldOffensiveMine(): bool throws GameActionException {
 fn tryMine() throws GameActionException {
     let at = rc.getLocation();
     let offensiveMining = shouldOffensiveMine();
-    rc.setIndicatorString("Offensive? " + offensiveMining);
+    // rc.setIndicatorString("Offensive? " + offensiveMining);
     for dir in allDirections() {
         let loc = at.add(dir);
         while rc.canMineGold(loc) {

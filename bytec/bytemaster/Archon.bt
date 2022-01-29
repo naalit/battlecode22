@@ -8,7 +8,7 @@ use RobotPlayer::rc;
 // What number archon this is, i.e. how many archons go before it each turn
 let archonOrder = 0;
 let archonCount = 0;
-let START_MINERS: [i32] = [3, 4, 4, 4];
+let START_MINERS: [i32] = [3, 4, 6, 6];
 
 fn preTurn() throws GameActionException {
 
@@ -87,9 +87,9 @@ enum BuildEntry {
     // Higher is better
     fn priority(): i32 throws GameActionException {
         match self {
-            StartMiner  => if minersSpawned == 0 || (!nearbyMiner && rc.getRoundNum() > 300) { 70 } else { 49 },
-            LateMiner   => if !nearbyMiner && rc.getRoundNum() > 300 { 50 } else { 20 },
-            Laboratory  => if Mem::getLabCount() == 0 { 60 } else { 30 },
+            StartMiner  => if minersSpawned == 0 || (nearbyMiners == 0 && rc.getRoundNum() > 300) { 70 } else { 49 },
+            LateMiner   => if nearbyMiners == 0 && rc.getRoundNum() > 300 { 50 } else { 20 },
+            Laboratory  => if Mem::getLabCount() == 0 { 51 } else { 30 },
             Builder     => if Mem::getBuilderCount() == 0 { 80 } else { 25 },
             FarmBuilder => 50 - nLead / 2,
             Soldier     => 1,
@@ -319,7 +319,7 @@ let builderTurns = 100;
 let lead = 0;
 let canMove = true;
 let minersSpawned = 0;
-let nearbyMiner = false;
+let nearbyMiners = 0;
 let nLead = 0;
 let nextVortex = 0;
 fn findVortex() throws GameActionException {
@@ -361,18 +361,17 @@ fn turn() throws GameActionException {
     let freeMiners = averageFreeMiners();
     lead = rc.getTeamLeadAmount(rc.getTeam());
 
-    nearbyMiner = false;
+    nearbyMiners = 0;
     for i in Mem::nearbyAllies {
         if i.type == RobotType::MINER {
-            nearbyMiner = true;
-            break;
+            nearbyMiners += 1;
         }
     }
 
     if rc.getMode() == RobotMode::PORTABLE {
         // Move to low rubble
         mobileTurns += 1;
-        if (Mem::nearbyEnemies.len() > 0 || mobileTurns >= MAX_MOBILE_TURNS) && (mobileTurns > 80 || !microMove()) && rc.canTransform() && rc.senseRubble(rc.getLocation()) <= 10 {
+        if (Mem::nearbyEnemies.len() > 0 || mobileTurns >= MAX_MOBILE_TURNS) && (mobileTurns > 80 || !microMove()) && rc.canTransform() && rc.senseRubble(rc.getLocation()) <= 20 {
             rc.transform();
             rc.writeSharedArray(Mem::FRIENDLY_ARCHON_LOC + archonOrder, Mem::encodeLoc(rc.getLocation()));
             canMove = true;
@@ -500,11 +499,10 @@ fn turn() throws GameActionException {
             // so it works pretty well in this case too!
             let bestUnit: RobotInfo = null;
             let bestV = 0;
-            Combat::at = rc.getLocation();
             let heal = rc.getType().getHealing(rc.getLevel());
             for i in Mem::nearbyAllies {
                 if i.health < i.type.health && rc.canRepair(i.location) {
-                    let v = Combat::repairValue(heal, i);
+                    let v = Micro::repairValue(heal, i);
                     if v > bestV {
                         bestUnit = i;
                         bestV = v;
