@@ -8,7 +8,7 @@ use RobotPlayer::rc;
 // What number archon this is, i.e. how many archons go before it each turn
 let archonOrder = 0;
 let archonCount = 0;
-let START_MINERS: [i32] = [3, 4, 6, 6];
+let START_MINERS: [i32] = [4, 4, 6, 6];
 
 fn preTurn() throws GameActionException {
 
@@ -88,7 +88,8 @@ enum BuildEntry {
     fn priority(): i32 throws GameActionException {
         match self {
             StartMiner  => if minersSpawned == 0 || (nearbyMiners == 0 && rc.getRoundNum() > 300) { 70 } else { 49 },
-            LateMiner   => if nearbyMiners == 0 && rc.getRoundNum() > 300 { 50 } else { 20 },
+            LateMiner   => 45 + nLead - 2 * nearbyMiners,
+            // LateMiner   => if nearbyMiners == 0 && rc.getRoundNum() > 300 { 50 } else { 20 },
             Laboratory  => if Mem::getLabCount() == 0 { 51 } else { 30 },
             Builder     => if Mem::getBuilderCount() == 0 { 80 } else { 25 },
             FarmBuilder => 50 - nLead / 2,
@@ -99,8 +100,9 @@ enum BuildEntry {
 
     fn matches(i: i32): bool {
         match self {
-            StartMiner  => i == 70 || i == 49,
-            LateMiner   => i == 50 || i == 20,
+            StartMiner  => false,//i == 70 || i == 49,
+            LateMiner   => i > 42 && i < 58,
+            // LateMiner   => i == 50 || i == 20,
             Laboratory  => i == 60 || i == 30,
             Builder     => i == 80 || i == 25,
             FarmBuilder => i > 40 && i < 50,
@@ -267,22 +269,17 @@ fn microMove(): bool throws GameActionException {
     let best = microLoc();
     let at = rc.getLocation();
 
-    // if best != null {
-        if best.loc != at {
-            rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", healing: " + best.nHealable);
-            rc.setIndicatorLine(at, best.loc, 0, 0, 255);
-            if rc.isMovementReady() {
-                rc.move(at.dirTo(best.loc));
-            }
-            true
-        } else {
-            rc.setIndicatorString("MICRO STAY: damage: " + best.enemyDamage + ", healing: " + best.nHealable);
-            false
+    if best.loc != at {
+        rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", healing: " + best.nHealable);
+        rc.setIndicatorLine(at, best.loc, 0, 0, 255);
+        if rc.isMovementReady() {
+            rc.move(at.dirTo(best.loc));
         }
-    // } else {
-    //     rc.setIndicatorString("NO MICRO: damage: " + best.enemyDamage + ", healing: " + best.n);
-    //     false
-    // }
+        true
+    } else {
+        rc.setIndicatorString("MICRO STAY: damage: " + best.enemyDamage + ", healing: " + best.nHealable);
+        false
+    }
 }
 
 define MAX_MOBILE_TURNS = 40;
@@ -368,10 +365,46 @@ fn turn() throws GameActionException {
         }
     }
 
+    rc.setIndicatorString("Build queue: priority " + rc.readSharedArray(Mem::BUILD_QUEUE_LOC) + "for lead " + rc.readSharedArray(Mem::BUILD_QUEUE_LOC + 1));
+    if rc.readSharedArray(Mem::BUILD_QUEUE_LOC) == lastQueued {
+        rc.writeSharedArray(Mem::BUILD_QUEUE_LOC, 0);
+        lastQueued = 0;
+    }
+    if Mem::buildInfo.shouldBuildLab && Mem::getLabCount() >= 3 {
+        Mem::buildInfo.builtLab();
+    }
+
+    let needsBuilder = false;
+    builderTurns += 1;
+    if //income >= 3
+        (Mem::buildInfo.shouldBuildLab && minerCount > 1) || 
+            ((Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab || builderTurns >= 30 || Mem::getLabCount() == 0)
+            && minerCount > 3
+            && Mem::nearbyEnemies.len() == 0)
+    {
+        if Mem::getLabCount() == 0 || (income >= 3 * Mem::getLabCount()) && BuildEntry::Laboratory.tryQueue() {
+            if rc.readSharedArray(Mem::LAB_CLAIM_LOC) == 0 && builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead && Mem::getBuilderCount() < rc.getArchonCount() * 3 {
+                builderTurns = 0;
+                needsBuilder = true;
+            }
+            Mem::buildInfo.queueLab();
+        } else if income >= 8 && BuildEntry::Watchtower.tryQueue() {
+            if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead && Mem::getBuilderCount() < rc.getArchonCount() * 3 {
+                builderTurns = 0;
+                needsBuilder = true;
+            }
+            Mem::buildInfo.queueWatchtower();
+        }
+    } else if income <= 3 && (Mem::buildInfo.shouldBuildWatchtower || (Mem::buildInfo.shouldBuildLab && Mem::getLabCount() > 0)) {
+        Mem::buildInfo.builtWatchtower();
+        Mem::buildInfo.builtLab();
+    }
+
     if rc.getMode() == RobotMode::PORTABLE {
         // Move to low rubble
         mobileTurns += 1;
-        if (Mem::nearbyEnemies.len() > 0 || mobileTurns >= MAX_MOBILE_TURNS) && (mobileTurns > 80 || !microMove()) && rc.canTransform() && rc.senseRubble(rc.getLocation()) <= 20 {
+        let shouldBuild = rc.getTeamLeadAmount(rc.getTeam()) > 200 || rc.getTeamGoldAmount(rc.getTeam()) > 25;
+        if (shouldBuild || Mem::nearbyEnemies.len() > 2 || mobileTurns >= MAX_MOBILE_TURNS) && (mobileTurns > 80 || !microMove()) && rc.canTransform() && rc.senseRubble(rc.getLocation()) <= 20 {
             rc.transform();
             rc.writeSharedArray(Mem::FRIENDLY_ARCHON_LOC + archonOrder, Mem::encodeLoc(rc.getLocation()));
             canMove = true;
@@ -405,6 +438,14 @@ fn turn() throws GameActionException {
         }
     } else {
         mobileTurns = 0;
+        // Not exact, just a heuristic for when we're in danger
+        let enemyDamage = 0;
+        for i in Mem::nearbyEnemies {
+            if i.type.damage > 0 && i.location.isWithinDistanceSquared(rc.getLocation(), i.type.actionRadiusSquared) {
+                enemyDamage += i.type.damage;
+            }
+        }
+
         if canMove && rc.canTransform() && minersSpawned >= 2 && (Mem::getBuilderCount() > 0 || Mem::getLabCount() > 0) && rc.senseRubble(rc.getLocation()) > 0 {
             let rubble = rc.senseRubble(rc.getLocation());
             let found = false;
@@ -429,58 +470,25 @@ fn turn() throws GameActionException {
         }
 
         // Normal archon things
-        rc.setIndicatorString("Build queue: priority " + rc.readSharedArray(Mem::BUILD_QUEUE_LOC) + "for lead " + rc.readSharedArray(Mem::BUILD_QUEUE_LOC + 1));
-        if rc.readSharedArray(Mem::BUILD_QUEUE_LOC) == lastQueued {
-            rc.writeSharedArray(Mem::BUILD_QUEUE_LOC, 0);
-            lastQueued = 0;
-        }
-        if Mem::buildInfo.shouldBuildLab && Mem::getLabCount() >= 3 {
-            Mem::buildInfo.builtLab();
-        }
 
-        let needsBuilder = false;
-        builderTurns += 1;
-        if //income >= 3
-            (Mem::buildInfo.shouldBuildLab && minerCount > 1) || 
-                ((Mem::buildInfo.shouldBuildWatchtower || Mem::buildInfo.shouldBuildLab || builderTurns >= 30 || Mem::getLabCount() == 0)
-                && minerCount > 3
-                && Mem::nearbyEnemies.len() == 0)
-        {
-            if Mem::getLabCount() == 0 || (income >= 3 * Mem::getLabCount()) && BuildEntry::Laboratory.tryQueue() {
-                if rc.readSharedArray(Mem::LAB_CLAIM_LOC) == 0 && builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead && Mem::getBuilderCount() < rc.getArchonCount() * 3 {
-                    builderTurns = 0;
-                    needsBuilder = true;
-                }
-                Mem::buildInfo.queueLab();
-            } else if income >= 8 && BuildEntry::Watchtower.tryQueue() {
-                if builderTurns >= 30 && lead >= RobotType::BUILDER.buildCostLead && Mem::getBuilderCount() < rc.getArchonCount() * 3 {
-                    builderTurns = 0;
-                    needsBuilder = true;
-                }
-                Mem::buildInfo.queueWatchtower();
-            }
-        } else if income <= 3 && (Mem::buildInfo.shouldBuildWatchtower || (Mem::buildInfo.shouldBuildLab && Mem::getLabCount() > 0)) {
-            Mem::buildInfo.builtWatchtower();
-            Mem::buildInfo.builtLab();
-        }
-
-        // Don't let one Archon dominate
-        // They take turns spawning, or they can override the order if there's enough for each other archon to spawn a soldier to defend itself
         nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
         if rc.isActionReady() {
-            let targetMinerCount = 8 + (rc.getMapWidth() + rc.getMapHeight())/10;
+            // let targetMinerCount = 8 + (rc.getMapWidth() + rc.getMapHeight())/10;
             let targetFreeMiners = max(1, minerCount / 4);
             // let freeMinerPercent = Mem::getFreeMiners() * 100  / minerCount;
             let startMinerCount = START_MINERS[archonCount - 1];
-            if minerCount < startMinerCount && BuildEntry::StartMiner.tryBuildOrQueue() {
-                minersSpawned += 1;
-                spawnMiner();
+            if enemyDamage > 1 && rc.isActionReady() && rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold && (rc.getRoundNum() % rc.getArchonCount() == archonOrder
+                || rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold * (rc.getArchonCount() - archonOrder)) {
+                spawnSage();
+            // } else if minerCount < startMinerCount && BuildEntry::StartMiner.tryBuildOrQueue() {
+            //     minersSpawned += 1;
+            //     spawnMiner();
             } else if freeMiners < targetFreeMiners && BuildEntry::LateMiner.tryBuildOrQueue() {
                 minersSpawned += 1;
                 spawnMiner();
             } else if needsBuilder && Mem::getBuilderCount() < minerCount && BuildEntry::Builder.tryBuildOrQueue() {
                 spawnBuilder();
-            } else if (nLead < 20 && (rc.getRoundNum() > 300 || targetMinerCount > 13)) && Mem::nearbyEnemies.len() < min(3, Mem::nearbyAllies.len()) && BuildEntry::FarmBuilder.tryBuildOrQueue() {
+            } else if (nLead < 20 && rc.getRoundNum() > 300) && Mem::nearbyEnemies.len() < min(3, Mem::nearbyAllies.len()) && BuildEntry::FarmBuilder.tryBuildOrQueue() {
                 Mem::buildInfo.queueLeadFarming();
                 spawnSuicideBuilder();
             // All archons basically make sages as fast as possible, so we assume that later archons will build sages and make them take turns
@@ -514,7 +522,7 @@ fn turn() throws GameActionException {
             }
         }
 
-        if rc.canTransform() && ((Mem::getLabCount() > 0 && minerCount >= 4 && Mem::nearbyEnemies.len() == 0) || (minersSpawned > 0 && Mem::nearbyEnemies.len() > 2 * Mem::nearbyAllies.len())) {
+        if rc.canTransform() && ((Mem::getLabCount() > 0 && minerCount >= 4 && Mem::nearbyEnemies.len() == 0) || (minersSpawned > 0 && enemyDamage > 0 && Mem::nearbyEnemies.len() > Mem::nearbyAllies.len())) {
             rc.transform();
         }
     }

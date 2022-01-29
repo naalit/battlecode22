@@ -59,7 +59,7 @@ fn turn() throws GameActionException {
     }
 
     let closestSoldier = Mem::getClosestSoldier(loc);
-    if closestSoldier != null && closestSoldier.isWithinDistanceSquared(loc, 64) && !rc.canSenseLocation(closestSoldier) {
+    if closestSoldier != null { //&& closestSoldier.isWithinDistanceSquared(loc, 64) && !rc.canSenseLocation(closestSoldier) {
         Paths::target = closestSoldier;
         Paths::targetMove(true);
         return;

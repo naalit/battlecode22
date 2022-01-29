@@ -73,6 +73,11 @@ class Micro {
         self.startGen(rc.getType(), rc.getLevel(), rc.getHealth(), rc.isMovementReady(), true, rc.getType().damage > 0 && rc.isActionReady())
     }
 
+    fn startRcSpecMove(addSoldiers: bool) throws GameActionException {
+        self.addSoldiers = addSoldiers;
+        self.startGen(rc.getType(), rc.getLevel(), rc.getHealth(), true, true, rc.getType().damage > 0 && rc.isActionReady())
+    }
+
     fn startSpawn(ty: RobotType) throws GameActionException {
         self.addSoldiers = false;
         self.startGen(ty, 1, ty.health, true, false, ty.damage > 0);
@@ -82,6 +87,9 @@ class Micro {
         self.nearbyEnemyHP = 0;
         self.nearbyFriendlyHP = 0;
         self.nearbyFriendlyDamage = 0;
+
+        self.aBtc = 0;
+        self.bBtc = 0;
 
         self.canAttack = canAttack;
         self.canEnvision = canAttack && ty == RobotType::SAGE;
@@ -112,33 +120,6 @@ class Micro {
         }
     }
 
-    fn inline updateCombatEnemy(loc: LocInfo, bot: RobotInfo, d: i32) {
-        let attackDamage = damageValue(self.damage, bot);
-        if attackDamage > loc.attackDamage {
-            loc.bestEnemy = bot;
-            loc.distToEnemy = d;
-            loc.attackDamage = attackDamage;
-            if attackDamage > loc.bestDamage {
-                loc.bestDamage = attackDamage;
-            }
-        }
-        if self.canEnvision {
-            if bot.mode == RobotMode::TURRET {
-                let hp = bot.type.getMaxHealth(bot.level) / 10;
-                loc.furyHP += damageValue(hp, bot);
-                if loc.furyHP > loc.bestDamage {
-                    loc.bestDamage = loc.furyHP;
-                }
-            } else if bot.mode == RobotMode::DROID {
-                let hp = bot.type.getMaxHealth(bot.level) * 22 / 100;
-                loc.chargeHP += damageValue(hp, bot);
-                if loc.chargeHP > loc.bestDamage {
-                    loc.bestDamage = loc.chargeHP;
-                }
-            }
-        }
-    }
-
     fn updateDistantEnemies() throws GameActionException {
         let at = rc.getLocation();
         for i in unroll ENEMY_SOLDIER_LOC..ENEMY_SOLDIER_LOC+ENEMY_SOLDIER_LEN {
@@ -157,34 +138,76 @@ class Micro {
         }
     }
 
+    fn inline updateCombatEnemy(loc: LocInfo, bot: RobotInfo, attackDamage: i32, envisionDamage: i32, d: i32) {
+        if attackDamage > loc.attackDamage {
+            loc.bestEnemy = bot;
+            loc.distToEnemy = d;
+            loc.attackDamage = attackDamage;
+        }
+        if self.canEnvision {
+            if bot.mode == RobotMode::TURRET {
+                loc.furyHP += envisionDamage;
+            } else if bot.mode == RobotMode::DROID {
+                loc.chargeHP += envisionDamage;
+            }
+        }
+    }
+
+    let aBtc: i32;
+    let bBtc: i32;
+
     fn updateEnemies() throws GameActionException {
+        let at = rc.getLocation();
         for bot in Mem::nearbyEnemies {
-            if self.addSoldiers && bot.type.damage > 0 {
+            if self.addSoldiers && Mem::soldiersAdded < 3 && bot.type.damage > 0 {
                 Mem::addSoldier(bot.location);
                 self.nearbyEnemyHP += bot.health;
             }
             if self.canAttack || bot.type.damage > 0 {
+
+                let start = bytecodeNum();
+                let attackDamage = if self.canAttack { damageValue(self.damage, bot) } else { 0 };
+                let envisionDamage = if self.canEnvision {
+                    if bot.mode == RobotMode::TURRET {
+                        let hp = bot.type.getMaxHealth(bot.level) / 10;
+                        damageValue(hp, bot)
+                    } else if bot.mode == RobotMode::DROID {
+                        let hp = bot.type.getMaxHealth(bot.level) * 22 / 100;
+                        damageValue(hp, bot)
+                    } else { 0 }
+                } else { 0 };
+
+                let enemyDamage = if bot.mode.canAct && bot.type.damage > 0 {
+                    let rubble = rc.senseRubble(bot.location);
+                    (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble)
+                } else { 0 };
+                let towardsLoc = bot.location.add(bot.location.dirTo(at));
+                let specDamage = if bot.mode.canAct && bot.mode.canMove && bot.type.damage > 0 {
+                    let rubble = rc.senseRubble(towardsLoc);
+                    (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble) * 2 / 3
+                } else { 0 };
+
+                let mid = bytecodeNum();
                 for loc in self.locs {
                     if loc != null {
                         let d = loc.loc.distanceSquaredTo(bot.location);
                         if bot.mode.canAct && bot.type.damage > 0 {
                             if d <= bot.type.actionRadiusSquared {
-                                let rubble = rc.senseRubble(bot.location);
-                                loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
+                                loc.enemyDamage += enemyDamage;
                             // Assume they could move to attack us next turn, but give it a 2/3 chance
-                            } else if bot.mode.canMove {
-                                let towardsLoc = bot.location.add(bot.location.dirTo(loc.loc));
-                                if towardsLoc.isWithinDistanceSquared(loc.loc, bot.type.actionRadiusSquared) {
-                                    let rubble = rc.senseRubble(bot.location.add(bot.location.dirTo(loc.loc)));
-                                    loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble) * 2 / 3;
-                                }
+                            } else if bot.mode.canMove && towardsLoc.isWithinDistanceSquared(loc.loc, bot.type.actionRadiusSquared) {
+                                loc.enemyDamage += specDamage;
                             }
                         }
                         if self.canAttack && d <= self.type.actionRadiusSquared {
-                            self.updateCombatEnemy(loc, bot, d);
+                            self.updateCombatEnemy(loc, bot, attackDamage, envisionDamage, d);
                         }
                     }
                 }
+
+                let end = bytecodeNum();
+                self.aBtc += (mid - start);
+                self.bBtc += (end - mid);
             }
         }
     }
@@ -198,11 +221,11 @@ class Micro {
             }
             // Fury also hits friendly buildings
             if self.canEnvision && i.mode == RobotMode::TURRET {
+                let hp = i.type.getMaxHealth(i.level) / 10;
+                let d = damageValue(hp, i);
                 for loc in self.locs {
                     if loc != null && i.location.isWithinDistanceSquared(loc.loc, self.type.actionRadiusSquared) {
-                        let hp = i.type.getMaxHealth(i.level) / 10;
-                        loc.furyHP -= damageValue(hp, i);
-                        loc.bestDamage = max(loc.attackDamage, max(loc.furyHP, loc.chargeHP));
+                        loc.furyHP -= d;
                     }
                 }
             }
@@ -303,6 +326,7 @@ class Micro {
         let best: LocInfo = self.cloc;
         for loc in self.locs {
             if loc != null {
+                loc.bestDamage = max(loc.attackDamage, max(loc.furyHP, loc.chargeHP));
                 if self.better(best, loc) {
                     best = loc;
                 }
@@ -375,28 +399,28 @@ fn inline damageValue(dmg: i32, unit: RobotInfo): i32 {
     // 3 damage to sage at 100% health: 300
     // 3 damage to lab at 50% health: 6
     // 3 damage to miner at 100% health: 1
-    let kill = dmg >= unit.health;
-    if kill { dmg = unit.health; }
-    let mkill = if kill { 1 } else { 0 };
-    let healthPercent = unit.health * 100 / unit.type.getMaxHealth(unit.level);
-    let mhealth = (150 - healthPercent) / 10;
-    dmg *= mhealth;
+    let mkill = 0;
+    if dmg >= unit.health {
+        dmg = unit.health;
+        mkill = KILL_VALUE;
+    }
+    dmg *= 15 - unit.health * 10 / unit.type.getMaxHealth(unit.level);
 
     match unit.type {
         // Sages are valuable and dangerous, kill on sight
-        SAGE => (dmg + mkill * KILL_VALUE) * 20,
+        SAGE => (dmg + mkill) * 20,
         // The most immediate threat, if we don't kill them they'll kill us
-        SOLDIER => (dmg + mkill * KILL_VALUE) * 5,
+        SOLDIER => (dmg + mkill) * 5,
         // We'll need to kill these to take out a watchtower
         // probably should have special-case code for actually seeing a watchtower though
-        BUILDER => dmg + mkill * KILL_VALUE,
+        BUILDER => dmg + mkill,
         // Another threat
-        WATCHTOWER => dmg + mkill * KILL_VALUE * 20,
+        WATCHTOWER => dmg + mkill * 20,
         // Killing an archon would be *incredible*
         ARCHON => dmg + mkill * 1000,
         // Killing the enemy lab is also pretty good
-        LABORATORY => dmg / 5 + mkill * KILL_VALUE * 4,
-        MINER => dmg / 10 + mkill * KILL_VALUE,
+        LABORATORY => dmg / 5 + mkill * 4,
+        MINER => dmg / 10 + mkill,
     }
 }
 

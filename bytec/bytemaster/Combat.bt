@@ -54,26 +54,47 @@ fn findSpawnSpace(ty: RobotType): Direction throws GameActionException {
 }
 
 fn combatMicro() throws GameActionException {
-    micro.startRc(true);
+    let btc = bytecodeNum();
+    let tStart = rc.getRoundNum();
+    micro.startRcSpecMove(true);
+    let startBtc = bytecodeNum();
+    if rc.getRoundNum() != tStart { startBtc += rc.getType().bytecodeLimit; }
     micro.updateEnemies();
+    let iterBtc = bytecodeNum();
+    if rc.getRoundNum() != tStart { iterBtc += rc.getType().bytecodeLimit; }
     micro.updateAllies();
+    let finishBtc = bytecodeNum();
+    if rc.getRoundNum() != tStart { finishBtc += rc.getType().bytecodeLimit; }
     let best = micro.bestLoc();
+    let bBtc = bytecodeNum();
+    if rc.getRoundNum() != tStart { bBtc += rc.getType().bytecodeLimit; }
     let at = rc.getLocation();
 
-    rc.setIndicatorString("MOVE MICRO: Damage: " + best.enemyDamage + ", rubble: " + best.rubble + " v " + best.bestDamage);
-    // rc.setIndicatorLine(rc.getLocation(), betterLoc.loc, 127, 127, 127);
-    // if betterLoc.bestEnemy != null {
-    //     rc.setIndicatorLine(betterLoc.loc, betterLoc.bestEnemy.location, 0, 0, 0);
-    // }
+    let betterLoc = best;
+    if !rc.isMovementReady() && best.loc != rc.getLocation() {
+        best = micro.cloc;
+    }
+    rc.setIndicatorString("A: " + micro.aBtc + ", B: " + micro.bBtc + ", I: " + (startBtc - btc) + ", E: " + (iterBtc - startBtc) + ", A: " + (finishBtc - iterBtc) + ", B: " + (bBtc - finishBtc));
+    // rc.setIndicatorString("MOVE MICRO: Damage: " + best.enemyDamage + ", rubble: " + best.rubble + " v " + best.bestDamage);
+    rc.setIndicatorLine(rc.getLocation(), betterLoc.loc, 127, 127, 127);
+    if betterLoc.bestEnemy != null {
+        rc.setIndicatorLine(betterLoc.loc, betterLoc.bestEnemy.location, 0, 0, 0);
+    }
     if best == null {
         println("ERROR! best should not be null, CENTER is always an option");
     }
     // We can attack before or after moving, do whichever one is better
-    let waitAttack = false;//(isSage || best.rubble > 20) && (betterLoc.bestDamage > best.bestDamage || (betterLoc.bestDamage == best.bestDamage && betterLoc.rubble < best.rubble));
+    let waitAttack = (micro.canEnvision || best.rubble > 20) && (betterLoc.bestDamage > best.bestDamage || (betterLoc.bestDamage == best.bestDamage && betterLoc.rubble < best.rubble));
     let bestNow = micro.cloc.bestEnemy;
     let bestThen = best.bestEnemy;
     let shouldAttack = true;
     let abyssValue = 0;
+
+    // In case micro went over on bytecode
+    if best.loc != at && !rc.canMove(at.dirTo(best.loc)) {
+        best = micro.cloc;
+    }
+
     if micro.canEnvision {
         // Abyss is turned off for now because it kept losing
         ifdef ABYSS_VALUE
@@ -90,23 +111,23 @@ fn combatMicro() throws GameActionException {
     }
     if best.loc != at {
         rc.move(at.dirTo(best.loc));
-    }
-    if rc.isActionReady() && !waitAttack {
-        let visRadius = rc.getType().visionRadiusSquared;
-        let units = rc.senseNearbyRobotsT(visRadius, rc.getTeam().opponent());
-        for i in units {
-            // We couldn't see it last turn
-            if !i.location.isWithinDistanceSquared(at, visRadius) {
-                let damage = Micro::damageValue(micro.damage, i);
-                if damage > best.bestDamage {
-                    if i.location.isWithinDistanceSquared(at, rc.getType().actionRadiusSquared) {
-                        bestThen = i;
-                        best.bestDamage = damage;
+        if rc.isActionReady() && !waitAttack {
+            let visRadius = rc.getType().visionRadiusSquared;
+            let units = rc.senseNearbyRobotsT(visRadius, rc.getTeam().opponent());
+            for i in units {
+                // We couldn't see it last turn
+                if !i.location.isWithinDistanceSquared(at, visRadius) {
+                    let damage = Micro::damageValue(micro.damage, i);
+                    if damage > best.bestDamage {
+                        if i.location.isWithinDistanceSquared(at, rc.getType().actionRadiusSquared) {
+                            bestThen = i;
+                            best.bestDamage = damage;
+                        }
+                        // } else if (isSage || best.rubble > 20) {
+                        //     waitAttack = true;
+                        // }
+                        // break;
                     }
-                    // } else if (isSage || best.rubble > 20) {
-                    //     waitAttack = true;
-                    // }
-                    // break;
                 }
             }
         }

@@ -56,7 +56,7 @@ fn turn() throws GameActionException {
         }
     } else {
         let closestSoldier = Mem::getClosestSoldier(loc);
-        if rc.getHealth() > 30 && closestSoldier != null && closestSoldier.isWithinDistanceSquared(loc, 49) { //&& !rc.canSenseLocation(closestSoldier) {
+        if rc.getHealth() > 30 && closestSoldier != null { //&& closestSoldier.isWithinDistanceSquared(loc, 49) { //&& !rc.canSenseLocation(closestSoldier) {
             Paths::target = closestSoldier;
             Paths::targetMove(true);
         } else if Mem::enemyArchons.len() > 0 {

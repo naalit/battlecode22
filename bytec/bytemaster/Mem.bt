@@ -78,6 +78,10 @@ fn maintain() throws GameActionException {
             friendlyArchons.push(decodeLoc(rc.readSharedArray(FRIENDLY_ARCHON_LOC + i)));
         }
         rc.setIndicatorString("FOUND ARCHONS: " + friendlyArchons.len());
+    } else {
+        for i in 0..rc.getArchonCount() {
+            friendlyArchons[i] = decodeLoc(rc.readSharedArray(FRIENDLY_ARCHON_LOC + i));
+        }
     }
     closestArchon = null;
     let closestArchonD = 10000;
