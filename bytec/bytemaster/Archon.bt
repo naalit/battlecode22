@@ -400,6 +400,55 @@ fn turn() throws GameActionException {
         Mem::buildInfo.builtLab();
     }
 
+    // Not exact, just a heuristic for when we're in danger
+    let enemyDamage = 0;
+    for i in Mem::nearbyEnemies {
+        if i.type.damage > 0 && i.location.isWithinDistanceSquared(rc.getLocation(), i.type.actionRadiusSquared) {
+            enemyDamage += i.type.damage;
+        }
+    }
+
+    nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
+
+    if rc.getMode() == RobotMode::PORTABLE || !rc.isActionReady() {
+        // let targetMinerCount = 8 + (rc.getMapWidth() + rc.getMapHeight())/10;
+        let targetFreeMiners = max(1, minerCount / 3);
+        // let freeMinerPercent = Mem::getFreeMiners() * 100  / minerCount;
+        let startMinerCount = START_MINERS[archonCount - 1];
+        if enemyDamage > 1 && rc.isActionReady() && rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold && (rc.getRoundNum() % rc.getArchonCount() == archonOrder
+            || rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold * (rc.getArchonCount() - archonOrder)) {
+        } else if freeMiners < targetFreeMiners && BuildEntry::LateMiner.tryQueue() {
+        } else if needsBuilder && Mem::getBuilderCount() < minerCount && BuildEntry::Builder.tryQueue() {
+        } else if (nLead < 20 && rc.getRoundNum() > 300) && Mem::nearbyEnemies.len() < min(3, Mem::nearbyAllies.len()) && BuildEntry::FarmBuilder.tryQueue() {}
+    } else {
+        // let targetMinerCount = 8 + (rc.getMapWidth() + rc.getMapHeight())/10;
+        let targetFreeMiners = max(1, minerCount / 3);
+        // let freeMinerPercent = Mem::getFreeMiners() * 100  / minerCount;
+        let startMinerCount = START_MINERS[archonCount - 1];
+        if enemyDamage > 1 && rc.isActionReady() && rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold && (rc.getRoundNum() % rc.getArchonCount() == archonOrder
+            || rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold * (rc.getArchonCount() - archonOrder)) {
+            spawnSage();
+        // } else if minerCount < startMinerCount && BuildEntry::StartMiner.tryBuildOrQueue() {
+        //     minersSpawned += 1;
+        //     spawnMiner();
+        } else if freeMiners < targetFreeMiners && BuildEntry::LateMiner.tryBuildOrQueue() {
+            minersSpawned += 1;
+            spawnMiner();
+        } else if needsBuilder && Mem::getBuilderCount() < minerCount && BuildEntry::Builder.tryBuildOrQueue() {
+            spawnBuilder();
+        } else if (nLead < 20 && rc.getRoundNum() > 300) && Mem::nearbyEnemies.len() < min(3, Mem::nearbyAllies.len()) && BuildEntry::FarmBuilder.tryBuildOrQueue() {
+            Mem::buildInfo.queueLeadFarming();
+            spawnSuicideBuilder();
+        // All archons basically make sages as fast as possible, so we assume that later archons will build sages and make them take turns
+        // This is not always true, but it's a pretty good estimate
+        } else if rc.isActionReady() && rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold && (rc.getRoundNum() % rc.getArchonCount() == archonOrder
+            || rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold * (rc.getArchonCount() - archonOrder)) {
+            spawnSage();
+        } else if rc.getRoundNum() % rc.getArchonCount() == archonOrder && BuildEntry::Soldier.tryBuildOrQueue() {
+            spawnSoldier();
+        }
+    }
+
     if rc.getMode() == RobotMode::PORTABLE {
         // Move to low rubble
         mobileTurns += 1;
@@ -438,13 +487,6 @@ fn turn() throws GameActionException {
         }
     } else {
         mobileTurns = 0;
-        // Not exact, just a heuristic for when we're in danger
-        let enemyDamage = 0;
-        for i in Mem::nearbyEnemies {
-            if i.type.damage > 0 && i.location.isWithinDistanceSquared(rc.getLocation(), i.type.actionRadiusSquared) {
-                enemyDamage += i.type.damage;
-            }
-        }
 
         if canMove && rc.canTransform() && minersSpawned >= 2 && (Mem::getBuilderCount() > 0 || Mem::getLabCount() > 0) && rc.senseRubble(rc.getLocation()) > 0 {
             let rubble = rc.senseRubble(rc.getLocation());
@@ -470,37 +512,6 @@ fn turn() throws GameActionException {
         }
 
         // Normal archon things
-
-        nLead = rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 1).len();
-        if rc.isActionReady() {
-            // let targetMinerCount = 8 + (rc.getMapWidth() + rc.getMapHeight())/10;
-            let targetFreeMiners = max(1, minerCount / 4);
-            // let freeMinerPercent = Mem::getFreeMiners() * 100  / minerCount;
-            let startMinerCount = START_MINERS[archonCount - 1];
-            if enemyDamage > 1 && rc.isActionReady() && rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold && (rc.getRoundNum() % rc.getArchonCount() == archonOrder
-                || rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold * (rc.getArchonCount() - archonOrder)) {
-                spawnSage();
-            // } else if minerCount < startMinerCount && BuildEntry::StartMiner.tryBuildOrQueue() {
-            //     minersSpawned += 1;
-            //     spawnMiner();
-            } else if freeMiners < targetFreeMiners && BuildEntry::LateMiner.tryBuildOrQueue() {
-                minersSpawned += 1;
-                spawnMiner();
-            } else if needsBuilder && Mem::getBuilderCount() < minerCount && BuildEntry::Builder.tryBuildOrQueue() {
-                spawnBuilder();
-            } else if (nLead < 20 && rc.getRoundNum() > 300) && Mem::nearbyEnemies.len() < min(3, Mem::nearbyAllies.len()) && BuildEntry::FarmBuilder.tryBuildOrQueue() {
-                Mem::buildInfo.queueLeadFarming();
-                spawnSuicideBuilder();
-            // All archons basically make sages as fast as possible, so we assume that later archons will build sages and make them take turns
-            // This is not always true, but it's a pretty good estimate
-            } else if rc.isActionReady() && rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold && (rc.getRoundNum() % rc.getArchonCount() == archonOrder
-                || rc.getTeamGoldAmount(rc.getTeam()) >= RobotType::SAGE.buildCostGold * (rc.getArchonCount() - archonOrder)) {
-                spawnSage();
-            } else if rc.getRoundNum() % rc.getArchonCount() == archonOrder && BuildEntry::Soldier.tryBuildOrQueue() {
-                spawnSoldier();
-            }
-        }
-
         if rc.isActionReady() {
             // Try to repair a robot in range.
             // The targeting logic picks the most important and vulnerable unit,
