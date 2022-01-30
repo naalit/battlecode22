@@ -419,8 +419,8 @@ fn inline damageValue(dmg: i32, unit: RobotInfo): i32 {
         // Killing an archon would be *incredible*
         ARCHON => dmg + mkill * 1000,
         // Killing the enemy lab is also pretty good
-        LABORATORY => dmg / 5 + mkill * 4,
-        MINER => dmg / 10 + mkill,
+        LABORATORY => (dmg + mkill) * 35,
+        MINER => (dmg + mkill) * 50,
     }
 }
 
