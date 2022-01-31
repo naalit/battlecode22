@@ -164,120 +164,30 @@ enum BuildEntry {
 }
 let lastQueued = 0;
 
-class LocInfo {
-    let loc: MapLocation;
-    let enemyDamage: i32;
-    let nHealable: i32;
-    let rubble: i32;
-
-    fn init(loc: MapLocation) throws GameActionException {
-        self.loc = loc;
-        self.rubble = rc.senseRubble(loc);
-        self.enemyDamage = 0;
-        self.nHealable = 0;
-    }
-}
-fn locBetter(old: LocInfo, new: LocInfo): bool {
-    if old == null { return true; }
-    if new.enemyDamage < old.enemyDamage { return true; }
-    if new.enemyDamage > old.enemyDamage { return false; }
-    if new.rubble <= old.rubble + 10 {
-        if new.nHealable > new.nHealable { return true; }
-        if new.nHealable < new.nHealable { return false; }
-    }
-    new.rubble < old.rubble
-}
-
-let cloc: LocInfo = null;
-fn microLoc(): LocInfo throws GameActionException {
-    let at = rc.getLocation();
-    let n: LocInfo = null;
-    let locs: [LocInfo; 9] = [n,n,n,n,n,n,n,n,n];
-    cloc = null;
-    let directions = allDirections();
-    for i in unroll 0..9 {
-        let dir = directions[i];
-        let l = at.add(dir);
-        if dir == Direction::CENTER || (!rc.canSenseRobotAtLocation(l) && rc.onTheMap(l)) {
-            locs[i] = LocInfo();
-            locs[i].init(l);
-            if dir == Direction::CENTER {
-                cloc = locs[i];
-            }
-        }
-    }
-    for i in unroll ENEMY_SOLDIER_LOC..ENEMY_SOLDIER_LOC+ENEMY_SOLDIER_LEN {
-        let r = rc.readSharedArray(i);
-        if r != 0 {
-            let loc = Mem::decodeLoc(r - 1);
-            if !loc.isWithinDistanceSquared(at, 20) {
-                for l in locs {
-                    // Assume enemy soldiers we can't see could have moved 1 tile by now
-                    if l != null && loc.isWithinDistanceSquared(l.loc, 25) {
-                        l.enemyDamage += 10;
-                    }
-                }
-            }
-        }
-    }
-    for bot in Mem::nearbyEnemies {
-        if bot.mode.canAct && bot.type.damage > 0 {
-            for loc in locs {
-                if loc != null {
-                    // Assume they could move to attack us next turn, but give it a 2/3 chance
-                    let d = bot.location.distanceSquaredTo(loc.loc);
-                    // Assume they could move to attack us next turn, but give it a 2/3 chance
-                    if d <= bot.type.actionRadiusSquared {
-                        let rubble = rc.senseRubble(bot.location);
-                        loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
-                    } else if bot.mode.canMove {
-                        let towardsLoc = bot.location.add(bot.location.dirTo(loc.loc));
-                        if towardsLoc.isWithinDistanceSquared(loc.loc, bot.type.actionRadiusSquared) {
-                            let rubble = rc.senseRubble(bot.location.add(bot.location.dirTo(loc.loc)));
-                            loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble) * 2 / 3;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    let actionRadius = rc.getType().actionRadiusSquared;
-    for bot in Mem::nearbyAllies {
-        if bot.mode == RobotMode::DROID && bot.health < bot.type.health {
-            for loc in locs {
-                if loc != null {
-                    if bot.location.isWithinDistanceSquared(loc.loc, actionRadius) {
-                        loc.nHealable += 1;
-                    }
-                }
-            }
-        }
-    }
-
-    let best = cloc;
-    for loc in locs {
-        if loc != null {
-            if locBetter(best, loc) {
-                best = loc;
-            }
-        }
-    }
-    best
-}
+use Micro::Comparison;
+let micro = Micro::Micro().init([
+    Comparison::EnemyDamage,
+    Comparison::Rubble(10),
+    Comparison::RepairValue,
+    Comparison::Rubble(0),
+]);
 
 fn microMove(): bool throws GameActionException {
-    let best = microLoc();
+    micro.startRc(false);
+    micro.updateEnemies();
+    micro.updateAllies();
+    let best = micro.bestLoc();
     let at = rc.getLocation();
 
     if best.loc != at {
-        rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", healing: " + best.nHealable);
+        rc.setIndicatorString("MICRO MOVE: damage: " + best.enemyDamage + ", repair: " + best.repairValue);
         rc.setIndicatorLine(at, best.loc, 0, 0, 255);
         if rc.isMovementReady() {
             rc.move(at.dirTo(best.loc));
         }
         true
     } else {
-        rc.setIndicatorString("MICRO STAY: damage: " + best.enemyDamage + ", healing: " + best.nHealable);
+        rc.setIndicatorString("MICRO STAY: damage: " + best.enemyDamage + ", repair: " + best.repairValue);
         false
     }
 }

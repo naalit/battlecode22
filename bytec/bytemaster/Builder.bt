@@ -4,138 +4,24 @@ extern {
 
 use Common::*;
 use RobotPlayer::rc;
+use Micro::Comparison;
+
+let micro = Micro::Micro().init([
+    Comparison::EnemyDamage,
+    Comparison::Rubble(20),
+    Comparison::RepairValue,
+    Comparison::Rubble(0),
+]);
 
 fn preTurn() throws GameActionException {
 
 }
 
-class LocInfo {
-    let loc: MapLocation;
-    let enemyDamage: i32;
-    let rubble: i32;
-    let repairTarget: RobotInfo;
-    let upgradeTarget: RobotInfo;
-    let repairValue: i32;
-
-    fn init(loc: MapLocation) throws GameActionException {
-        self.loc = loc;
-        self.rubble = rc.senseRubble(loc);
-        self.enemyDamage = 0;
-        self.repairTarget = null;
-        self.upgradeTarget = null;
-        self.repairValue = 0;
-    }
-}
-fn locBetter(old: LocInfo, new: LocInfo): bool {
-    if old == null { return true; }
-    // TODO change the way this works so we spawn watchtowers close to the front line
-    if new.enemyDamage < old.enemyDamage { return true; }
-    if new.enemyDamage > old.enemyDamage { return false; }
-    if new.rubble <= old.rubble + 20 {
-        if new.repairValue > old.repairValue { return true; }
-        if new.repairValue < old.repairValue { return false; }
-    }
-    new.rubble < old.rubble
-}
-
-let cloc: LocInfo = null;
-let existsDamage = false;
-fn microLoc(include_center: bool, include_others: bool): LocInfo throws GameActionException {
-    let at = rc.getLocation();
-    existsDamage = false;
-    let n: LocInfo = null;
-    towerUpgrade = null;
-    let towerRubble = 10000;
-    let locs: [LocInfo; 9] = [n,n,n,n,n,n,n,n,n];
-    cloc = null;
-    let directions = allDirections();
-    for i in unroll 0..9 {
-        let dir = directions[i];
-        let l = at.add(dir);
-        if (include_center && dir == Direction::CENTER) || (include_others && !rc.canSenseRobotAtLocation(l) && rc.onTheMap(l)) {
-            locs[i] = LocInfo();
-            locs[i].init(l);
-            if dir == Direction::CENTER {
-                cloc = locs[i];
-            }
-        }
-    }
-    for i in unroll ENEMY_SOLDIER_LOC..ENEMY_SOLDIER_LOC+ENEMY_SOLDIER_LEN {
-        let r = rc.readSharedArray(i);
-        if r != 0 {
-            let loc = Mem::decodeLoc(r - 1);
-            if !loc.isWithinDistanceSquared(at, 20) {
-                for l in locs {
-                    // Assume enemy soldiers we can't see could have moved 1 tile by now
-                    if l != null && loc.isWithinDistanceSquared(l.loc, 20) {
-                        l.enemyDamage += 10;
-                        existsDamage = true;
-                    }
-
-                }
-            }
-        }
-    }
-    for bot in Mem::nearbyEnemies {
-        if bot.type.damage > 0 {
-            existsDamage = true;
-            if bot.mode.canAct {
-                for loc in locs {
-                    if loc != null {
-                        // Assume they could move to attack us next turn, but give it a 2/3 chance
-                        let d = bot.location.distanceSquaredTo(loc.loc);
-                        // Assume they could move to attack us next turn, but give it a 2/3 chance
-                        if d <= bot.type.actionRadiusSquared {
-                            let rubble = rc.senseRubble(bot.location);
-                            loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
-                        } else if bot.mode.canMove {
-                            let towardsLoc = bot.location.add(bot.location.dirTo(loc.loc));
-                            if towardsLoc.isWithinDistanceSquared(loc.loc, bot.type.actionRadiusSquared) {
-                                let rubble = rc.senseRubble(bot.location.add(bot.location.dirTo(loc.loc)));
-                                loc.enemyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble) * 2 / 3;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    for bot in Mem::nearbyAllies {
-        if bot.type.isBuilding() {
-            for l in locs {
-                if l != null {
-                    if bot.location.isWithinDistanceSquared(l.loc, RobotType::BUILDER.actionRadiusSquared) {
-                        let v = Micro::repairValue(2, bot);
-                        if v > l.repairValue {
-                            l.repairTarget = bot;
-                            l.repairValue = v;
-                        }
-                        if (bot.type == RobotType::WATCHTOWER || (bot.type == RobotType::LABORATORY && Mem::buildInfo.shouldUpgradeLab)) && bot.mode == RobotMode::TURRET && bot.level == 1 {
-                            let rubble = rc.senseRubble(bot.location);
-                            if rubble < towerRubble {
-                                l.upgradeTarget = bot;
-                                towerRubble = rubble;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let best = cloc;
-    for loc in locs {
-        if loc != null {
-            if locBetter(best, loc) {
-                best = loc;
-            }
-        }
-    }
-    best
-}
-
 fn findSpawnSpace(): Direction throws GameActionException {
-    let best = microLoc(false, true);
+    micro.startSpawn(RobotType::BUILDER);
+    micro.updateEnemies();
+    micro.updateAllies();
+    let best = micro.bestLoc();
 
     if best != null {
         rc.getLocation().dirTo(best.loc)
@@ -148,7 +34,10 @@ fn findSpawnSpace(): Direction throws GameActionException {
 let towerUpgrade: RobotInfo = null;
 let bestRepair: RobotInfo = null;
 fn microMove(): bool throws GameActionException {
-    let best = microLoc(true, rc.isMovementReady());
+    micro.startRc(false);
+    micro.updateEnemies();
+    micro.updateAllies();
+    let best = micro.bestLoc();
     let at = rc.getLocation();
 
     if rc.isMovementReady() {
@@ -164,14 +53,14 @@ fn microMove(): bool throws GameActionException {
             towerUpgrade = best.upgradeTarget;
             true
         } else {
-            rc.setIndicatorString("NO MICRO: damage: " + cloc.enemyDamage + ", repair?: " + (cloc.repairTarget != null) + " v " + cloc.repairValue);
-            bestRepair = cloc.repairTarget;
-            towerUpgrade = cloc.upgradeTarget;
+            rc.setIndicatorString("NO MICRO: damage: " + micro.cloc.enemyDamage + ", repair?: " + (micro.cloc.repairTarget != null) + " v " + micro.cloc.repairValue);
+            bestRepair = micro.cloc.repairTarget;
+            towerUpgrade = micro.cloc.upgradeTarget;
             false
         }
     } else {
-        bestRepair = cloc.repairTarget;
-        towerUpgrade = cloc.upgradeTarget;
+        bestRepair = micro.cloc.repairTarget;
+        towerUpgrade = micro.cloc.upgradeTarget;
         false
     }
 }
@@ -238,7 +127,7 @@ fn turn() throws GameActionException {
             rc.mutate(towerUpgrade.location);
             Mem::spend(towerUpgrade.type.getLeadMutateCost(towerUpgrade.level + 1));
             Mem::buildInfo.upgradedLab();
-        } else if bytecodeLeft() > 3000 && existsDamage && Mem::buildInfo.shouldBuildWatchtower && rc.getTeamLeadAmount(rc.getTeam()) >= RobotType::WATCHTOWER.buildCostLead {
+        } else if bytecodeLeft() > 3000 && micro.existsDamage && Mem::buildInfo.shouldBuildWatchtower && rc.getTeamLeadAmount(rc.getTeam()) >= RobotType::WATCHTOWER.buildCostLead {
             if towerUpgrade != null && rc.canMutate(towerUpgrade.location) {
                 rc.mutate(towerUpgrade.location);
                 Mem::spend(towerUpgrade.type.getLeadMutateCost(towerUpgrade.level + 1));

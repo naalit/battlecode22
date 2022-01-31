@@ -47,6 +47,7 @@ enum Comparison {
     PushOrRetreat,
     AdjacentLead,
     LeadDist,
+    RepairValue,
 }
 
 class Micro {
@@ -62,6 +63,8 @@ class Micro {
     let addSoldiers: bool;
     let locs: [LocInfo; 9];
     let cloc: LocInfo = null;
+    let canRepair: bool;
+    let existsDamage: bool;
 
     fn init(comps: [Comparison]): Micro {
         self.comps = comps;
@@ -70,27 +73,29 @@ class Micro {
 
     fn startRc(addSoldiers: bool) throws GameActionException {
         self.addSoldiers = addSoldiers;
-        self.startGen(rc.getType(), rc.getLevel(), rc.getHealth(), rc.isMovementReady(), true, rc.getType().damage > 0 && rc.isActionReady())
+        self.startGen(rc.getType(), rc.getLevel(), rc.getHealth(), rc.isMovementReady(), true, rc.getType().damage > 0 && rc.isActionReady(), rc.getType().damage < 0 && rc.isActionReady())
     }
 
     fn startRcSpecMove(addSoldiers: bool) throws GameActionException {
         self.addSoldiers = addSoldiers;
-        self.startGen(rc.getType(), rc.getLevel(), rc.getHealth(), true, true, rc.getType().damage > 0 && rc.isActionReady())
+        self.startGen(rc.getType(), rc.getLevel(), rc.getHealth(), true, true, rc.getType().damage > 0 && rc.isActionReady(), rc.getType().damage < 0 && rc.isActionReady());
     }
 
     fn startSpawn(ty: RobotType) throws GameActionException {
         self.addSoldiers = false;
-        self.startGen(ty, 1, ty.health, true, false, ty.damage > 0);
+        self.startGen(ty, 1, ty.health, true, false, ty.damage > 0, ty.damage < 0);
     }
 
-    fn startGen(ty: RobotType, level: i32, health: i32, canMove: bool, canStay: bool, canAttack: bool) throws GameActionException {
+    fn startGen(ty: RobotType, level: i32, health: i32, canMove: bool, canStay: bool, canAttack: bool, canRepair: bool) throws GameActionException {
         self.nearbyEnemyHP = 0;
         self.nearbyFriendlyHP = 0;
         self.nearbyFriendlyDamage = 0;
+        self.existsDamage = false;
 
         self.aBtc = 0;
         self.bBtc = 0;
 
+        self.canRepair = canRepair;
         self.canAttack = canAttack;
         self.canEnvision = canAttack && ty == RobotType::SAGE;
         self.type = ty;
@@ -164,7 +169,7 @@ class Micro {
                 self.nearbyEnemyHP += bot.health;
             }
             if self.canAttack || bot.type.damage > 0 {
-
+                self.existsDamage = true;
                 let start = bytecodeNum();
                 let attackDamage = if self.canAttack { damageValue(self.damage, bot) } else { 0 };
                 let envisionDamage = if self.canEnvision {
@@ -213,19 +218,37 @@ class Micro {
     }
 
     fn updateAllies() throws GameActionException {
-        for i in Mem::nearbyAllies {
-            if i.type.damage > 0 {
-                self.nearbyFriendlyHP += i.health;
-                let rubble = rc.senseRubble(i.location);
-                self.nearbyFriendlyDamage += (i.type.getDamage(i.level) * 1000 / i.type.actionCooldown) / (10 + rubble);
+        for bot in Mem::nearbyAllies {
+            if bot.type.damage > 0 {
+                self.nearbyFriendlyHP += bot.health;
+                let rubble = rc.senseRubble(bot.location);
+                self.nearbyFriendlyDamage += (bot.type.getDamage(bot.level) * 1000 / bot.type.actionCooldown) / (10 + rubble);
             }
             // Fury also hits friendly buildings
-            if self.canEnvision && i.mode == RobotMode::TURRET {
-                let hp = i.type.getMaxHealth(i.level) / 10;
-                let d = damageValue(hp, i);
+            if self.canEnvision && bot.mode == RobotMode::TURRET {
+                let hp = bot.type.getMaxHealth(bot.level) / 10;
+                let d = damageValue(hp, bot);
                 for loc in self.locs {
-                    if loc != null && i.location.isWithinDistanceSquared(loc.loc, self.type.actionRadiusSquared) {
+                    if loc != null && bot.location.isWithinDistanceSquared(loc.loc, self.type.actionRadiusSquared) {
                         loc.furyHP -= d;
+                    }
+                }
+            }
+            if self.canRepair && self.type.canRepair(bot.type) {
+                for l in self.locs {
+                    if l != null {
+                        if bot.location.isWithinDistanceSquared(l.loc, RobotType::BUILDER.actionRadiusSquared) {
+                            if bot.health < bot.type.getMaxHealth(bot.level) {
+                                let v = Micro::repairValue(2, bot);
+                                if v > l.repairValue {
+                                    l.repairTarget = bot;
+                                    l.repairValue = v;
+                                }
+                            }
+                            if l.upgradeTarget == null && (bot.type == RobotType::WATCHTOWER || (bot.type == RobotType::LABORATORY && Mem::buildInfo.shouldUpgradeLab)) && bot.mode == RobotMode::TURRET && bot.level == 1 {
+                                l.upgradeTarget = bot;
+                            }
+                        }
                     }
                 }
             }
@@ -386,6 +409,10 @@ class Micro {
                 LeadDist => {
                     if new.leadDist * 10 + new.rubble < old.leadDist * 10 + old.rubble { return true; }
                     if new.leadDist * 10 + new.rubble > old.leadDist * 10 + old.rubble { return false; }
+                }
+                RepairValue => {
+                    if new.repairValue > old.repairValue { return true; }
+                    if new.repairValue < old.repairValue { return false; }
                 }
             }
         }
