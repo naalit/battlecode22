@@ -1,35 +1,11 @@
-# Battlecode 2022 Scaffold
+# [Compilers] Battlecode 2022 Players
 
-This is the Battlecode 2022 scaffold, containing an `examplefuncsplayer`. Read https://play.battlecode.org/getting-started!
+This is the main repository for all the code I wrote for Battlecode 2022. It's written in [ByteC](https://github.com/tolziplohu/bytec), which looks for the most part like Rust-lite.
 
-### Project Structure
+## Structure
 
-- `README.md`
-    This file.
-- `build.gradle`
-    The Gradle build file used to build and run players.
-- `src/`
-    Player source code.
-- `test/`
-    Player test code.
-- `client/`
-    Contains the client. The proper executable can be found in this folder (don't move this!)
-- `build/`
-    Contains compiled player code and other artifacts of the build process. Can be safely ignored.
-- `matches/`
-    The output folder for match files.
-- `maps/`
-    The default folder for custom maps.
-- `gradlew`, `gradlew.bat`
-    The Unix (OS X/Linux) and Windows versions, respectively, of the Gradle wrapper. These are nifty scripts that you can execute in a terminal to run the Gradle build tasks of this project. If you aren't planning to do command line development, these can be safely ignored.
-- `gradle/`
-    Contains files used by the Gradle wrapper scripts. Can be safely ignored.
-
-
-### Useful Commands
-
-- `./gradlew run`
-    Runs a game with the settings in gradle.properties
-- `./gradlew update`
-    Update to the newest version! Run every so often
-
+- `bytec` - this is the directory that all ByteC source files go in; it would be called `src`, but that must be the output directory because it's hardcoded into the Battlecode engine.
+    - `common` - these modules are shared between bots
+    - `bytemaster` - this is the newest bot and the most interesting
+    - `bytecoder` - this is the bot I used up until sprint 2, it doesn't actually compile anymore because the Paths API changed
+- `src` - output Java files must go in this directory to be seen by the Battlecode client, there's no actual code here
