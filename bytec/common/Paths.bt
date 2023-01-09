@@ -357,7 +357,7 @@ fn pathFinish(from: MapLocation, to: MapLocation): Direction {
 
 let lastTarget: MapLocation = null;
 
-define N_SAVED_LOCS = 3;
+const N_SAVED_LOCS = 3;
 let lastLocs: [MapLocation] = [; N_SAVED_LOCS];
 let lastLocIdx = 0;
 fn inline addLoc(loc: MapLocation) {

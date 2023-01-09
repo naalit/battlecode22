@@ -192,7 +192,7 @@ fn microMove(): bool throws GameActionException {
     }
 }
 
-define MAX_MOBILE_TURNS = 40;
+const MAX_MOBILE_TURNS = 40;
 let mobileTurns = 0;
 let incomes: [i32] = [; 30];
 let incomeIdx = 0;

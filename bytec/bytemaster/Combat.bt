@@ -7,7 +7,7 @@ use RobotPlayer::rc;
 use Micro::Comparison;
 
 let RETREAT_HEALTH = 15;
-define ABYSS_VALUE = 5;
+const ABYSS_VALUE = 5;
 let micro = Micro::Micro().init([
     Comparison::Rubble(20),
     Comparison::AttackPush,
@@ -97,8 +97,7 @@ fn combatMicro() throws GameActionException {
 
     if micro.canEnvision {
         // Abyss is turned off for now because it kept losing
-        ifdef ABYSS_VALUE
-        if Miner::shouldOffensiveMine() {
+        if ABYSS_VALUE > 0 && Miner::shouldOffensiveMine() {
             abyssValue = rc.senseNearbyLocationsWithLeadAt(best.loc, rc.getType().actionRadiusSquared, 2).len() + 7 * rc.senseNearbyLocationsWithGoldAt(best.loc, rc.getType().actionRadiusSquared).len();
             abyssValue *= ABYSS_VALUE;
         }

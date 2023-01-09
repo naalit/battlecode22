@@ -31,28 +31,26 @@ let buildInfo = BuildInfo();
 // 38: builders claim lab locations so only one is waiting
 // 39: disposable income
 // 40: number of unoccupied miners
-define ARCHON_IDX_LOC = 0;
-define ENEMY_ARCHON_LOC = 1;
-define ENEMY_ARCHON_LEN = 6;
-define SOLDIER_COUNT_LOC = 6;
-define MINER_CORNER_LOC = 7;
-define MINER_COUNT_LOC = 9;
+const ARCHON_IDX_LOC = 0;
+const ENEMY_ARCHON_LOC = 1;
+const ENEMY_ARCHON_LEN = 6;
+const SOLDIER_COUNT_LOC = 6;
+const MINER_CORNER_LOC = 7;
+const MINER_COUNT_LOC = 9;
 let FRIENDLY_ARCHON_LOC = 10;
-define FRIENDLY_ARCHON_LEN = 4;
-// we need to use these in Miner and that happens to run first so we can't do this
-// TODO fix this system or add proper constants or something
-// define ENEMY_SOLDIER_LOC = 15;
-// define ENEMY_SOLDIER_LEN = 16;
-define BUILD_INFO_LOC = 31;
-define INCOME_LOC = 32;
-define LAB_COUNT_LOC = 33;
-define BUILDER_COUNT_LOC = 34;
+const FRIENDLY_ARCHON_LEN = 4;
+const ENEMY_SOLDIER_LOC = 15;
+const ENEMY_SOLDIER_LEN = 16;
+const BUILD_INFO_LOC = 31;
+const INCOME_LOC = 32;
+const LAB_COUNT_LOC = 33;
+const BUILDER_COUNT_LOC = 34;
 let BUILD_QUEUE_LOC = 35;
 let LAB_CLAIM_LOC = 38;
 let FREE_LEAD_LOC = 39;
 let FREE_MINER_LOC = 40;
 
-define ENEMY_SOLDIER_KEEP_TURNS = 5;
+const ENEMY_SOLDIER_KEEP_TURNS = 5;
 
 // A location takes up 12 bits
 // ...this is a lot easier than last year

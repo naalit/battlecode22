@@ -5,7 +5,7 @@ extern {
 use Common::*;
 use RobotPlayer::rc;
 
-define KILL_VALUE = 20;
+const KILL_VALUE = 20;
 
 class LocInfo {
     let loc: MapLocation;
@@ -127,7 +127,7 @@ class Micro {
 
     fn updateDistantEnemies() throws GameActionException {
         let at = rc.getLocation();
-        for i in unroll ENEMY_SOLDIER_LOC..ENEMY_SOLDIER_LOC+ENEMY_SOLDIER_LEN {
+        for i in unroll Mem::ENEMY_SOLDIER_LOC..Mem::ENEMY_SOLDIER_LOC+Mem::ENEMY_SOLDIER_LEN {
             let r = rc.readSharedArray(i);
             if r != 0 {
                 let loc = Mem::decodeLoc(r - 1);
@@ -278,7 +278,7 @@ class Micro {
         for loc in rc.senseNearbyLocationsWithLead(rc.getType().visionRadiusSquared, 2) {
             let d0 = at.distanceSquaredTo(loc);
             let lead = rc.senseLead(loc);
-            if MOST_LEAD && isMiner {
+            if Miner::MOST_LEAD && isMiner {
                 if (lead > Miner::closestM || (lead == Miner::closestM && d0 < closestD)) {
                     Miner::closestM = lead;
                     Miner::closestLead = loc;
@@ -307,7 +307,7 @@ class Micro {
         for loc in rc.senseNearbyLocationsWithGold(rc.getType().visionRadiusSquared) {
             let d0 = at.distanceSquaredTo(loc);
             let lead = rc.senseGold(loc);
-            if MOST_LEAD && isMiner {
+            if Miner::MOST_LEAD && isMiner {
                 if (lead * 7 > Miner::closestM || (lead * 7 == Miner::closestM && d0 < closestD)) {
                     Miner::closestM = lead * 7;
                     Miner::closestLead = loc;

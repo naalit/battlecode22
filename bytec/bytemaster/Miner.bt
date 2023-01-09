@@ -6,10 +6,7 @@ use Common::*;
 use RobotPlayer::rc;
 use Micro::Comparison;
 
-// Copied from Mem since we want to inline them
-define ENEMY_SOLDIER_LOC = 15;
-define ENEMY_SOLDIER_LEN = 16;
-define MOST_LEAD = true;
+const MOST_LEAD = true;
 let micro = Micro::Micro().init([
     Comparison::EnemyDamage,
     Comparison::AdjacentLead,
